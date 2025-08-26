@@ -1,0 +1,30 @@
+.PHONY: build up down logs shell test clean
+
+# Build the Docker image
+build:
+	docker-compose build
+
+# Start the services
+up:
+	docker-compose up -d
+
+# Stop the services
+down:
+	docker-compose down
+
+# View logs
+logs:
+	docker-compose logs -f
+
+# Access application shell
+shell:
+	docker-compose exec legal-simplifier bash
+
+# Run tests
+test:
+	docker-compose exec legal-simplifier pytest
+
+# Clean up everything
+clean:
+	docker-compose down -v
+	docker system prune -f
