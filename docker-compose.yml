@@ -1,27 +1,52 @@
+version: "3.9"
+
 services:
+  ########################################################
+  # 1. FastAPI backend
+  ########################################################
   legal-simplifier:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile               # adjust if your file lives elsewhere
     ports:
       - "8000:8000"
     environment:
-      - ENVIRONMENT=development
+      # ── Runtime mode ─────────────────────────────────
+      - ENVIRONMENT=development            # or production
+      # ── Auth & CORS ──────────────────────────────────
+      - API_KEY=my-strong-secret
+      - CORS_ORIGINS=http://localhost:3000
+      # ── GCP / Document AI ────────────────────────────
+      - GCP_PROJECT_ID=my-gcp-project
+      - DOCAI_PROCESSOR_ID=6b8123abc987
+      - DOCAI_PROCESSOR_VERSION=rc
+      # ── Vertex AI ────────────────────────────────────
+      - VERTEX_LOCATION=us-central1
+      # ── Milvus connection (host Milvus example) ─────
+      - MILVUS_HOST=host.docker.internal
+      - MILVUS_PORT=19530
+      - MILVUS_COLLECTION=data2
+      - USE_SECRET_MANAGER=false
+      # ── Other deps  (Postgres & Redis from same stack) ──
       - DATABASE_URL=postgresql://postgres:password@db:5432/legal_db
       - REDIS_URL=redis://redis:6379
-      - MILVUS_HOST=milvus
-      - MILVUS_PORT=19530
+      - CORS_ORIGINS=["http://localhost:3000"]
     volumes:
-      - ./src:/app/src
+      - ./src:/app/src                       # live-reload dev mounting
       - ./config/credentials:/app/credentials:ro
       - uploads_volume:/app/uploads
     depends_on:
       - db
       - redis
       - milvus
+    extra_hosts:                             # only needed on Linux
+      - "host.docker.internal:host-gateway"
     networks:
       - legal_network
 
+  ########################################################
+  # 2. Postgres
+  ########################################################
   db:
     image: postgres:15
     environment:
@@ -35,6 +60,9 @@ services:
     networks:
       - legal_network
 
+  ########################################################
+  # 3. Redis
+  ########################################################
   redis:
     image: redis:7-alpine
     ports:
@@ -42,27 +70,36 @@ services:
     networks:
       - legal_network
 
+  ########################################################
+  # 4. Etcd (for Milvus)
+  ########################################################
   etcd:
     image: quay.io/coreos/etcd:v3.5.13
     environment:
-      - ETCD_AUTO_COMPACTION_MODE=revision
-      - ETCD_AUTO_COMPACTION_RETENTION=1000
-      - ETCD_QUOTA_BACKEND_BYTES=4294967296
-      - ETCD_SNAPSHOT_COUNT=50000
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: >
+      etcd -advertise-client-urls=http://etcd:2379
+           -listen-client-urls=http://0.0.0.0:2379
+           --data-dir /etcd
     volumes:
       - etcd_data:/etcd
-    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     networks:
       - legal_network
 
+  ########################################################
+  # 5. MinIO (object storage for Milvus)
+  ########################################################
   minio:
     image: quay.io/minio/minio:RELEASE.2024-05-01T01-11-10Z
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
+    command: minio server /minio_data
     volumes:
       - minio_data:/minio_data
-    command: minio server /minio_data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -71,6 +108,9 @@ services:
     networks:
       - legal_network
 
+  ########################################################
+  # 6. Milvus 2.5 (stand-alone)
+  ########################################################
   milvus:
     image: milvusdb/milvus:v2.5.6
     command: ["milvus", "run", "standalone"]
@@ -80,14 +120,17 @@ services:
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
-      - "19530:19530"
-      - "9091:9091"
+      - "19530:19530"   # gRPC
+      - "9091:9091"     # HTTP monitoring
     depends_on:
-      - "etcd"
-      - "minio"
+      - etcd
+      - minio
     networks:
       - legal_network
 
+  ########################################################
+  # 7. Attu (Milvus UI)
+  ########################################################
   attu:
     image: zilliz/attu:v2.3.0
     depends_on:

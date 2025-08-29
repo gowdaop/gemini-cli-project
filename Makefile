@@ -28,3 +28,7 @@ test:
 clean:
 	docker-compose down -v
 	docker system prune -f
+git status
+git stash push -m "wip before pull --rebase"
+git pull --rebase origin
+git stash pop
