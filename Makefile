@@ -43,3 +43,7 @@ python scripts/generate_openapi.py \
   --app-dir src/legal-document-simplifier \
   --app-path src.backend.main:app \
   --out docs/openapi.json
+
+docker compose restart legal-simplifier
+
+docker compose up --build legal-simplifier

@@ -1,21 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, Request, status, File, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.security import APIKeyHeader
 from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional
 import time
 import logging
 import uvicorn
-from pydantic import BaseModel
-# Fix import paths
-from .schemas.analysis import extract_text, analyze_document, answer_with_vertex
-from .config import settings
 
 from .config import settings
+from .routers import upload, analyze, chat
+# Note: chat router will be added later per user request
+from .schemas.analysis import ErrorResponse
 
 # Configure logging
 logging.basicConfig(
@@ -24,30 +22,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Add missing Pydantic models
-class ChatRequest(BaseModel):
-    question: str
-    context: Optional[str] = ""
-
-class AnalyzeRequest(BaseModel):
-    ocr: Dict[str, Any]
-    top_k: int = 5
-
-class UploadResponse(BaseModel):
-    ocr: Dict[str, Any]
-
-class AnalyzeResponse(BaseModel):
-    clauses: List[Dict[str, Any]]
-    risks: List[Dict[str, Any]]
-    summary: Optional[str] = None
-
-class ChatResponse(BaseModel):
-    answer: str
-    sources: List[str] = []
-    confidence: Optional[float] = None
-class ErrorResponse(BaseModel):
-    detail: str
-    code: Optional[str] = None
 # API Key authentication
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
 
@@ -102,7 +76,7 @@ app = FastAPI(
 
 # Security middleware
 app.add_middleware(
-    TrustedHostMiddleware, 
+    TrustedHostMiddleware,
     allowed_hosts=["*"] if settings.DEBUG else ["*.run.app", "localhost"]
 )
 
@@ -116,6 +90,28 @@ app.add_middleware(
     max_age=3600,
 )
 
+# Include API routers with authentication
+app.include_router(
+    upload.router, 
+    dependencies=[Depends(require_api_key)]
+)
+app.include_router(
+    analyze.router,
+    dependencies=[Depends(require_api_key)]
+)
+# Chat router will be added later
+app.include_router(
+    upload.router, 
+    dependencies=[Depends(require_api_key)]
+)
+app.include_router(
+    analyze.router,
+    dependencies=[Depends(require_api_key)]
+)
+app.include_router(
+    chat.router,  # ← ADD THIS LINE
+    dependencies=[Depends(require_api_key)]
+)
 # Request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -154,7 +150,6 @@ async def log_requests(request: Request, call_next):
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle unexpected exceptions"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=ErrorResponse(
@@ -183,56 +178,12 @@ async def root():
         "docs_url": "/docs" if settings.DEBUG else None
     }
 
-# Fixed endpoints with correct function names and imports
-@app.post("/upload", response_model=UploadResponse)
-async def upload_file(
-    file: UploadFile = File(...),
-    current_user: str = Depends(require_api_key)  # Fixed: was verify_api_key
-):
-    """Upload and process document"""
-    try:
-        # Use your analysis functions
-        ocr_result = await extract_text(file)
-        return {"ocr": ocr_result}  # Matches test expectation
-        
-    except Exception as e:
-        logger.error(f"Upload failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
-
-@app.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_document_endpoint(
-    request: AnalyzeRequest,
-    current_user: str = Depends(require_api_key)  # Fixed: was verify_api_key
-):
-    """Analyze document for clauses and risks"""
-    try:
-        analysis_result = analyze_document(request.ocr, request.top_k)
-        return analysis_result  # Matches test expectation
-        
-    except Exception as e:
-        logger.error(f"Analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(
-    request: ChatRequest,
-    current_user: str = Depends(require_api_key)  # Fixed: was verify_api_key
-):
-    """Chat with legal document using RAG"""
-    try:
-        chat_result = answer_with_vertex(request.question)
-        return chat_result  # Matches test expectation
-        
-    except Exception as e:
-        logger.error(f"Chat failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
-
 # Custom OpenAPI schema
 def custom_openapi():
     """Generate custom OpenAPI schema"""
     if app.openapi_schema:
         return app.openapi_schema
-        
+    
     openapi_schema = get_openapi(
         title=settings.API_TITLE,
         version=settings.API_VERSION,
@@ -249,7 +200,7 @@ def custom_openapi():
         }
     }
     
-    # Add security requirement to all paths
+    # Add security requirement to all paths except health and root
     for path in openapi_schema["paths"].values():
         for method in path.values():
             if isinstance(method, dict) and "tags" in method:

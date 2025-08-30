@@ -11,23 +11,55 @@ services:
     environment:
       # ── Runtime mode ─────────────────────────────────
       - ENVIRONMENT=development
+      - DEBUG=true
+      
       # ── Auth & CORS ──────────────────────────────────
       - API_KEY=my-strong-secret
-      - CORS_ORIGINS=["http://localhost:3000"]
+      - CORS_ORIGINS=http://localhost:3000,https://localhost:3000
+      - CORS_ALLOW_CREDENTIALS=true
+      - CORS_ALLOW_METHODS=GET,POST,PUT,DELETE,OPTIONS
+      - CORS_ALLOW_HEADERS=*
+      
       # ── GCP / Document AI ────────────────────────────
       - GCP_PROJECT_ID=my-gcp-project
+      - GCP_LOCATION=us-central1
       - DOCAI_PROCESSOR_ID=6b8123abc987
       - DOCAI_PROCESSOR_VERSION=rc
+      
       # ── Vertex AI ────────────────────────────────────
+      - VERTEX_MODEL=gemini-1.5-pro
       - VERTEX_LOCATION=us-central1
-      # ── Milvus connection (host Milvus example) ─────
+      - VERTEX_MAX_TOKENS=8192
+      - VERTEX_TEMPERATURE=0.1
+      - GOOGLE_API_KEY=your-vertex-ai-api-key-here
+      # ── Milvus connection ───────────────────────────
       - MILVUS_HOST=host.docker.internal
       - MILVUS_PORT=19530
       - MILVUS_COLLECTION=data2
+      - MILVUS_TIMEOUT=30
+      
+      # ── HuggingFace Configuration ───────────────────
+      - HF_MODEL_NAME=nlpaueb/legal-bert-base-uncased
+      - HF_CACHE_DIR=/tmp/hf_cache
+      
+      # ── File Upload Configuration ───────────────────
+      - MAX_FILE_SIZE=20971520
+      - MAX_PAGES=15
+      - ALLOWED_MIME_TYPES=application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      
+      # ── Security ─────────────────────────────────────
+      - SECRET_MANAGER_PROJECT=
       - USE_SECRET_MANAGER=false
-      # ── Other deps  (Postgres & Redis from same stack) ──
+      
+      # ── Performance ──────────────────────────────────
+      - WORKER_TIMEOUT=300
+      - KEEP_ALIVE_TIMEOUT=5
+      - MAX_WORKERS=4
+      
+      # ── Database & Redis (for future use) ───────────
       - DATABASE_URL=postgresql://postgres:password@db:5432/legal_db
       - REDIS_URL=redis://redis:6379
+      
     command: >
       uvicorn --app-dir /app/src/legal-document-simplifier
               src.backend.main:app 
@@ -44,6 +76,12 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - legal_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   ########################################################
   # 2. Postgres
@@ -54,12 +92,19 @@ services:
       POSTGRES_DB: legal_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     networks:
       - legal_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d legal_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   ########################################################
   # 3. Redis
@@ -68,8 +113,16 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     networks:
       - legal_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    command: redis-server --appendonly yes
 
   ########################################################
   # 4. Etcd (for Milvus)
@@ -89,6 +142,11 @@ services:
       - etcd_data:/etcd
     networks:
       - legal_network
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
   ########################################################
   # 5. MinIO (object storage for Milvus)
@@ -98,7 +156,10 @@ services:
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
-    command: minio server /minio_data
+    command: minio server /minio_data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/minio_data
     healthcheck:
@@ -118,24 +179,35 @@ services:
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
       - "19530:19530"
       - "9091:9091"
     depends_on:
-      - etcd
-      - minio
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     networks:
       - legal_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 90s
 
   ########################################################
   # 7. Attu (Milvus UI)
   ########################################################
   attu:
-    image: zilliz/attu:v2.3.0
+    image: zilliz/attu:v2.4.8
     depends_on:
-      - milvus
+      milvus:
+        condition: service_healthy
     ports:
       - "8001:3000"
     environment:
@@ -145,6 +217,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   uploads_volume:
   etcd_data:
   minio_data:
@@ -153,3 +226,6 @@ volumes:
 networks:
   legal_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
