@@ -19,24 +19,119 @@ except ImportError:
     AutoTokenizer = AutoModel = torch = np = None
     TRANSFORMERS_AVAILABLE = False
 
-# Configure logging
+# Configure logging - FIXED: Use __name__ instead of name
 logger = logging.getLogger(__name__)
 
-# Constants
-MODEL_NAME = "nlpaueb/legal-bert-base-uncased"
-EMBEDDING_DIMENSION = 768
-MAX_SEQUENCE_LENGTH = 512
-BATCH_SIZE = 8
+# Configuration
+@dataclass
+class EmbeddingConfig:
+    model_name: str = "nlpaueb/legal-bert-base-uncased"
+    embedding_dimension: int = 768
+    max_sequence_length: int = 512
+    batch_size: int = 8
+    max_workers: int = 2
+    cache_size: int = 1000
+    cache_ttl: int = 3600  # 1 hour
+    use_gpu: bool = True
+    model_cache_dir: Optional[str] = None
+
+class LRUCacheWithTTL:
+    """LRU Cache with TTL (Time To Live) support"""
+    
+    def __init__(self, max_size: int = 1000, ttl: int = 3600):
+        self.max_size = max_size
+        self.ttl = ttl
+        self.cache = OrderedDict()
+        self.timestamps = {}
+    
+    def get(self, key: str) -> Optional[Any]:
+        if key not in self.cache:
+            return None
+        
+        # Check TTL
+        if time.time() - self.timestamps[key] > self.ttl:
+            self._remove(key)
+            return None
+        
+        # Move to end (most recently used)
+        self.cache.move_to_end(key)
+        return self.cache[key]
+    
+    def set(self, key: str, value: Any) -> None:
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        else:
+            if len(self.cache) >= self.max_size:
+                # Remove least recently used
+                oldest = next(iter(self.cache))
+                self._remove(oldest)
+            
+            self.cache[key] = value
+        
+        self.timestamps[key] = time.time()
+    
+    def _remove(self, key: str) -> None:
+        self.cache.pop(key, None)
+        self.timestamps.pop(key, None)
+    
+    def clear(self) -> None:
+        self.cache.clear()
+        self.timestamps.clear()
+    
+    def size(self) -> int:
+        return len(self.cache)
 
 class EmbeddingService:
     """Optimized embedding service for legal documents"""
     
-    def __init__(self):
+    def __init__(self, config: Optional[EmbeddingConfig] = None):
+        self.config = config or EmbeddingConfig()
         self._model = None
         self._tokenizer = None
-        self._executor = ThreadPoolExecutor(max_workers=2)
-        self._cache = {}
+        self._device = None
+        self._executor = None
+        self._cache = LRUCacheWithTTL(
+            max_size=self.config.cache_size,
+            ttl=self.config.cache_ttl
+        )
+        self._model_loaded = False
         
+    async def __aenter__(self):
+        await self.initialize()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.cleanup()
+    
+    async def initialize(self) -> None:
+        """Initialize the service asynchronously"""
+        if not self._executor:
+            self._executor = ThreadPoolExecutor(
+                max_workers=self.config.max_workers,
+                thread_name_prefix="embedding"
+            )
+        
+        # Load model in background
+        if TRANSFORMERS_AVAILABLE and not self._model_loaded:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(self._executor, self._load_model)
+    
+    async def cleanup(self) -> None:
+        """Clean up resources"""
+        if self._executor:
+            self._executor.shutdown(wait=True)
+            self._executor = None
+        
+        # Clear GPU memory
+        if self._model and hasattr(self._model, 'cpu'):
+            self._model.cpu()
+            del self._model
+            
+        if torch and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        self._cache.clear()
+    
     @property
     def is_available(self) -> bool:
         """Check if the embedding service is available"""
@@ -64,15 +159,38 @@ class EmbeddingService:
             return
         
         try:
-            logger.info(f"Loading LegalBERT model: {MODEL_NAME}")
-            tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-            model = AutoModel.from_pretrained(MODEL_NAME)
-            model.eval()
+            logger.info(f"Loading model: {self.config.model_name}")
             
-            # Move to GPU if available
-            if torch.cuda.is_available():
-                model = model.cuda()
-                logger.info("Model loaded on GPU")
+            # Set cache directory if specified
+            cache_dir = self.config.model_cache_dir or os.getenv("TRANSFORMERS_CACHE")
+            
+            # Load tokenizer
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self.config.model_name,
+                cache_dir=cache_dir,
+                use_fast=True  # Use fast tokenizer if available
+            )
+            
+            # Load model with optimizations
+            model_kwargs = {
+                'cache_dir': cache_dir,
+                'low_cpu_mem_usage': True
+            }
+            
+            # Add torch_dtype only if torch is available
+            if torch and torch.cuda.is_available():
+                model_kwargs['torch_dtype'] = torch.float16
+            
+            self._model = AutoModel.from_pretrained(
+                self.config.model_name,
+                **model_kwargs
+            )
+            
+            # Set device
+            self._device = self._determine_device()
+            if self._device == "cuda" and torch:
+                self._model = self._model.cuda()
+                logger.info("Model loaded on GPU with half precision")
             else:
                 logger.info("Model loaded on CPU")
             
@@ -80,13 +198,19 @@ class EmbeddingService:
             self._model_loaded = True
             
         except Exception as e:
-            logger.error(f"Failed to load LegalBERT model: {e}")
-            return None, None
+            logger.error(f"Failed to load model: {e}")
+            self._model = None
+            self._tokenizer = None
     
-    def _get_cache_key(self, texts: List[str]) -> str:
-        """Generate cache key for text batch"""
-        text_hash = hashlib.md5("|".join(texts).encode()).hexdigest()
-        return f"embed_{text_hash}"
+    def _get_cache_key(self, texts: List[str], prefix: str = "embed") -> str:
+        """Generate efficient cache key"""
+        # Use first 100 chars of each text to avoid huge keys
+        text_sample = "|".join(text[:100] for text in texts[:10])  # Limit to first 10 texts
+        text_hash = hashlib.blake2b(
+            text_sample.encode(), 
+            digest_size=16
+        ).hexdigest()
+        return f"{prefix}_{len(texts)}_{text_hash}"
     
     def _create_fallback_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Create improved deterministic fallback embeddings"""

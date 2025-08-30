@@ -6,33 +6,34 @@ import time
 from unittest.mock import Mock, patch, MagicMock
 from typing import List
 
-# Import your embedding service
-from services.embedding import (
-    embed_texts, 
-    embed_texts_async, 
-    get_embedding_info, 
+from backend.services.embedding import (
+    embed_texts,
+    embed_texts_async,
+    get_embedding_info,
     health_check,
     EmbeddingService,
-    EMBEDDING_DIMENSION
+    EmbeddingConfig
 )
 
-class TestEmbeddingService:
-    """Test suite for the EmbeddingService class"""
+EMBEDDING_DIMENSION = 768
+
+class TestEmbeddingServiceCore:
+    """Core functionality tests for EmbeddingService"""
     
     def test_embedding_service_initialization(self):
         """Test that embedding service initializes correctly"""
         service = EmbeddingService()
         assert service._model is None
         assert service._tokenizer is None
-        assert service._cache == {}
-        assert service._executor is not None
+        assert service._cache is not None
+        assert service._executor is None
 
     def test_is_available_property(self):
         """Test the is_available property"""
         service = EmbeddingService()
         assert isinstance(service.is_available, bool)
 
-    @patch('src.backend.services.embedding.TRANSFORMERS_AVAILABLE', False)
+    @patch('backend.services.embedding.TRANSFORMERS_AVAILABLE', False)
     def test_fallback_embeddings_when_transformers_unavailable(self):
         """Test fallback behavior when transformers is not available"""
         service = EmbeddingService()
@@ -56,7 +57,7 @@ class TestEmbeddingService:
         """Test cache key generation"""
         service = EmbeddingService()
         texts1 = ["hello", "world"]
-        texts2 = ["hello", "world"] 
+        texts2 = ["hello", "world"]
         texts3 = ["world", "hello"]
         
         key1 = service._get_cache_key(texts1)
@@ -67,7 +68,7 @@ class TestEmbeddingService:
         assert key1 != key3  # Same texts, different order
 
 class TestSyncEmbedding:
-    """Test synchronous embedding functions"""
+    """Synchronous embedding function tests"""
     
     def test_embed_texts_basic(self):
         """Test basic embedding functionality"""
@@ -110,7 +111,7 @@ class TestSyncEmbedding:
             assert len(embedding) == EMBEDDING_DIMENSION
 
 class TestAsyncEmbedding:
-    """Test asynchronous embedding functions"""
+    """Asynchronous embedding function tests"""
     
     @pytest.mark.asyncio
     async def test_embed_texts_async_basic(self):
@@ -145,23 +146,20 @@ class TestAsyncEmbedding:
         texts = ["Cacheable sentence"]
         
         embeddings1 = await embed_texts_async(texts)
-        
-        # Second call should use cache
         embeddings2 = await embed_texts_async(texts)
         
         assert embeddings1 == embeddings2
 
 class TestCaching:
-    """Test caching functionality"""
+    """Caching functionality tests"""
     
     def test_caching_works(self):
         """Test that caching works correctly"""
         service = EmbeddingService()
         texts = ["Cache test sentence"]
         
-        # Mock the _encode_batch method to track calls
-        original_encode = service._encode_batch
-        service._encode_batch = Mock(return_value=[[0.1] * EMBEDDING_DIMENSION])
+        # Mock the _encode_batch_sync method to track calls
+        service._encode_batch_sync = Mock(return_value=[[0.1] * EMBEDDING_DIMENSION])
         
         # First call should hit the encoder
         embeddings1 = service.embed_texts_sync(texts)
@@ -186,9 +184,9 @@ class TestCaching:
         assert service._cache.size() <= 10
 
 class TestErrorHandling:
-    """Test error handling scenarios"""
+    """Error handling scenario tests"""
     
-    @patch('src.backend.services.embedding.TRANSFORMERS_AVAILABLE', False)
+    @patch('backend.services.embedding.TRANSFORMERS_AVAILABLE', False)
     def test_graceful_fallback_no_transformers(self):
         """Test graceful fallback when transformers unavailable"""
         texts = ["Fallback test"]
@@ -200,7 +198,8 @@ class TestErrorHandling:
     @patch('backend.services.embedding.EmbeddingService._load_model')
     def test_model_loading_error(self, mock_load):
         """Test handling of model loading errors"""
-        mock_load.return_value = (None, None)  # Simulate loading failure
+        # Mock _load_model to do nothing (simulate failure without exception)
+        mock_load.return_value = None
         
         service = EmbeddingService()
         # Manually set the service state to simulate failed loading
@@ -310,7 +309,7 @@ class TestPerformance:
         assert cached_time < cold_time or cached_time < 0.01  # Very fast due to cache
 
 class TestUtilityFunctions:
-    """Test utility functions"""
+    """Utility function tests"""
     
     def test_get_embedding_info(self):
         """Test embedding info function"""
@@ -344,7 +343,7 @@ class TestUtilityFunctions:
         assert "error" in health
 
 class TestIntegration:
-    """Integration tests"""
+    """Integration and consistency tests"""
     
     @pytest.mark.asyncio
     async def test_sync_async_consistency(self):
@@ -375,13 +374,13 @@ class TestIntegration:
             assert len(emb) == EMBEDDING_DIMENSION
 
 class TestLegalBERTSpecific:
-    """Tests specific to LegalBERT functionality"""
+    """Legal domain-specific tests"""
     
     def test_legal_text_processing(self):
         """Test embedding generation for legal text"""
         legal_texts = [
             "The party shall be liable for damages",
-            "This agreement terminates upon breach", 
+            "This agreement terminates upon breach",
             "Confidential information must not be disclosed",
             "Governing law shall be the state of California"
         ]
