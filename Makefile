@@ -32,3 +32,14 @@ git status
 git stash push -m "wip before pull --rebase"
 git pull --rebase origin
 git stash pop
+
+
+git commit -m "Your commit message here"
+
+git push origin main
+
+
+python scripts/generate_openapi.py \
+  --app-dir src/legal-document-simplifier \
+  --app-path src.backend.main:app \
+  --out docs/openapi.json

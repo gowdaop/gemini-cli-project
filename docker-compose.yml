@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   ########################################################
   # 1. FastAPI backend
@@ -7,15 +5,15 @@ services:
   legal-simplifier:
     build:
       context: .
-      dockerfile: Dockerfile               # adjust if your file lives elsewhere
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
       # ── Runtime mode ─────────────────────────────────
-      - ENVIRONMENT=development            # or production
+      - ENVIRONMENT=development
       # ── Auth & CORS ──────────────────────────────────
       - API_KEY=my-strong-secret
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=["http://localhost:3000"]
       # ── GCP / Document AI ────────────────────────────
       - GCP_PROJECT_ID=my-gcp-project
       - DOCAI_PROCESSOR_ID=6b8123abc987
@@ -30,16 +28,19 @@ services:
       # ── Other deps  (Postgres & Redis from same stack) ──
       - DATABASE_URL=postgresql://postgres:password@db:5432/legal_db
       - REDIS_URL=redis://redis:6379
-      - CORS_ORIGINS=["http://localhost:3000"]
+    command: >
+      uvicorn --app-dir /app/src/legal-document-simplifier
+              src.backend.main:app 
+              --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./src:/app/src                       # live-reload dev mounting
+      - ./src:/app/src
       - ./config/credentials:/app/credentials:ro
       - uploads_volume:/app/uploads
     depends_on:
       - db
       - redis
       - milvus
-    extra_hosts:                             # only needed on Linux
+    extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
       - legal_network
@@ -120,8 +121,8 @@ services:
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
-      - "19530:19530"   # gRPC
-      - "9091:9091"     # HTTP monitoring
+      - "19530:19530"
+      - "9091:9091"
     depends_on:
       - etcd
       - minio

@@ -1,42 +1,30 @@
 #!/usr/bin/env python3
-"""Generate OpenAPI specification for the API"""
+"""
+Generate an OpenAPI 3.1 spec from the FastAPI app.
 
-import json
-import os
-import sys
-from pathlib import Path
+Usage:
+  python scripts/generate_openapi.py \
+    --app-dir src/legal-document-simplifier \
+    --app-path src.backend.main:app \
+    --out docs/openapi.json
+"""
+import argparse, json, sys, yaml
+from uvicorn.importer import import_from_string
 
-# Add src to path
-src_path = Path(__file__).parent.parent / "src"
-sys.path.insert(0, str(src_path))
+parser = argparse.ArgumentParser()
+parser.add_argument("--app-dir", required=True)
+parser.add_argument("--app-path", default="src.backend.main:app")
+parser.add_argument("--out", default="docs/openapi.json")
+args = parser.parse_args()
 
-from src.backend.main import app
+sys.path.insert(0, args.app_dir)
+app = import_from_string(args.app_path)
+spec = app.openapi()
 
+with open(args.out, "w") as f:
+    if args.out.endswith(".yaml"):
+        yaml.dump(spec, f, sort_keys=False)
+    else:
+        json.dump(spec, f, indent=2)
 
-def generate_openapi_spec():
-    """Generate and save OpenAPI specification"""
-    openapi_spec = app.openapi()
-    
-    # Ensure docs directory exists
-    docs_dir = Path(__file__).parent.parent / "docs"
-    docs_dir.mkdir(exist_ok=True)
-    
-    # Save OpenAPI spec
-    with open(docs_dir / "openapi.json", "w") as f:
-        json.dump(openapi_spec, f, indent=2)
-    
-    print(f"OpenAPI specification saved to {docs_dir / 'openapi.json'}")
-    print(f"Endpoints documented: {len(openapi_spec['paths'])}")
-    
-    # Print summary
-    tags = set()
-    for path_data in openapi_spec["paths"].values():
-        for method_data in path_data.values():
-            if isinstance(method_data, dict) and "tags" in method_data:
-                tags.update(method_data["tags"])
-    
-    print(f"Tags: {sorted(tags)}")
-
-
-if __name__ == "__main__":
-    generate_openapi_spec()
+print(f"✅  OpenAPI written to {args.out}")
