@@ -107,7 +107,7 @@ class DocumentAIService:
             )
             
             # This will raise an exception if authentication or processor access fails
-            response = self.client.process_document(request=request)
+            response = self.client.process_request(request=request)
             logger.debug("Document AI processor access test successful")
             
         except Exception as e:
@@ -146,7 +146,7 @@ class DocumentAIService:
             # Process with retry logic
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: self.client.process_document(
+                lambda: self.client.process_request(
                     request=request, 
                     retry=self._retry_config,
                     timeout=120  # 2 minutes timeout
@@ -168,7 +168,7 @@ class DocumentAIService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid document format: {str(e)}"
             )
-        except gcp_exceptions.QuotaExceeded as e:
+        except gcp_exceptions.ResourceExhausted as e:
             logger.error(f"Document AI quota exceeded: {e}")
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -278,47 +278,6 @@ class OCRTextConverter:
                                     text=para_text.strip(),
                                     span=span
                                 ))
-                    
-                    # If no paragraphs, fall back to blocks
-                    elif hasattr(page, 'blocks') and page.blocks:
-                        for block in page.blocks:
-                            block_text = OCRTextConverter._extract_text_from_layout(
-                                document.text, block.layout.text_anchor
-                            )
-                            
-                            if block_text.strip():
-                                try:
-                                    lines_before = document.text[:block.layout.text_anchor.text_segments[0].start_index].count('\n')
-                                    lines_in_block = block_text.count('\n')
-                                except (IndexError, AttributeError):
-                                    lines_before = 0
-                                    lines_in_block = 0
-                                
-                                span = PageSpan(
-                                    page=page_number,
-                                    start_line=max(1, lines_before + 1),
-                                    end_line=lines_before + lines_in_block + 1
-                                )
-                                
-                                blocks.append(OCRBlock(
-                                    text=block_text.strip(),
-                                    span=span
-                                ))
-                    
-                    # If no structured elements, create one block per page
-                    else:
-                        page_text = OCRTextConverter._extract_page_text(document.text, page)
-                        if page_text.strip():
-                            span = PageSpan(
-                                page=page_number,
-                                start_line=1,
-                                end_line=page_text.count('\n') + 1
-                            )
-                            
-                            blocks.append(OCRBlock(
-                                text=page_text.strip(),
-                                span=span
-                            ))
             
             # If no blocks were created, create a single block with all text
             if not blocks and full_text.strip():
@@ -357,23 +316,6 @@ class OCRTextConverter:
         except Exception as e:
             logger.warning(f"Text extraction from layout failed: {e}")
             return ""
-    
-    @staticmethod
-    def _extract_page_text(full_text: str, page) -> str:
-        """Extract text for an entire page"""
-        try:
-            if not hasattr(page, 'dimension'):
-                return ""
-            
-            # This is a simplified approach - in reality, you'd want to
-            # use the page's text anchor if available
-            page_chars = len(full_text) // max(1, len([page]))  # Rough estimate
-            start_idx = 0  # Would need proper calculation
-            end_idx = min(len(full_text), start_idx + page_chars)
-            
-            return full_text[start_idx:end_idx]
-        except Exception:
-            return ""
 
 class FallbackOCRService:
     """Fallback OCR service for when Document AI is not available"""
@@ -396,8 +338,10 @@ FILE TYPE: {file.content_type}
 SIZE: {len(content)} bytes
 PROCESSED: {datetime.now().isoformat()}
 
+
 This is a mock OCR extraction result for development purposes.
 In production, this would contain the actual extracted text from Document AI.
+
 
 Sample legal content for testing:
 - This agreement shall be governed by the laws of [State/Country]
@@ -460,15 +404,6 @@ _document_ai_service = DocumentAIService()
 async def extract_text(file: UploadFile) -> Dict[str, Any]:
     """
     Main OCR function - extracts text from uploaded file using Document AI
-    
-    Args:
-        file: Uploaded file (PDF, DOCX, PNG, JPEG)
-        
-    Returns:
-        Dictionary containing OCRText data (full_text, blocks with spans)
-        
-    Raises:
-        HTTPException: For various error conditions (file size, type, processing)
     """
     try:
         logger.info(f"Starting OCR extraction for: {file.filename}")
