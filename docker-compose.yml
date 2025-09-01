@@ -47,7 +47,7 @@ services:
       - MILVUS_TIMEOUT=30
       
       # ── HuggingFace Configuration ──────────────────────
-      - HF_MODEL_NAME=nlpaueb/legal-bert-base-uncased
+      - HF_MODEL_NAME=law-ai/InLegalBERT
       - HF_CACHE_DIR=/tmp/hf_cache
       
       # ── File Upload Limits ─────────────────────────────
