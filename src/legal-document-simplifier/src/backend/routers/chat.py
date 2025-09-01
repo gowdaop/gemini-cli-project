@@ -38,6 +38,7 @@ CONVERSATION_TIMEOUT = timedelta(hours=2)
 MAX_CONVERSATION_HISTORY = 10
 MAX_QUESTION_LENGTH = 1000
 
+
 class ConversationManager:
     """Manages conversation state and history"""
     
@@ -119,6 +120,7 @@ class ConversationManager:
         if expired_ids:
             logger.info(f"Cleaned up {len(expired_ids)} expired conversations")
 
+
 class QuestionProcessor:
     """Processes and validates user questions"""
     
@@ -195,151 +197,42 @@ class QuestionProcessor:
         
         return intent
 
-class ResponseGenerator:
-    """Generates structured responses for legal questions"""
+
+class ChatService:
+    """Main chat service that integrates RAG and conversation management"""
     
-    @staticmethod
-    async def generate_legal_response(
+    def __init__(self):
+        self.rag_service = None
+        self.initialized = False
+    
+    async def initialize(self):
+        """Initialize the RAG service"""
+        if not self.initialized:
+            self.rag_service = await rag.get_rag_service()
+            self.initialized = True
+            logger.info("Chat service initialized with RAG")
+    
+    async def handle_chat_request(
+        self,
         question: str,
-        evidence: List[RAGContextItem],
-        conversation_context: Optional[Dict] = None,
-        document_context: Optional[OCRText] = None
-    ) -> str:
-        """Generate a comprehensive legal response"""
+        conversation_id: Optional[str] = None,
+        ocr: Optional[OCRText] = None,
+        summary_hint: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Handle a complete chat request with RAG integration"""
         
-        # Build context for LLM
-        context_parts = []
+        # Initialize if needed
+        if not self.initialized:
+            await self.initialize()
         
-        # Add document context if available
-        if document_context and document_context.full_text:
-            context_parts.append(f"DOCUMENT CONTEXT:\n{document_context.full_text[:2000]}...")
-        
-        # Add conversation history
-        if conversation_context and conversation_context.get("history"):
-            recent_history = conversation_context["history"][-3:]  # Last 3 exchanges
-            history_text = "\n".join([
-                f"Q: {h['question']}\nA: {h['answer'][:200]}..."
-                for h in recent_history
-            ])
-            context_parts.append(f"CONVERSATION HISTORY:\n{history_text}")
-        
-        # Add evidence from RAG
-        if evidence:
-            evidence_text = "\n\n".join([
-                f"Source {i+1} ({ctx.doc_type}, {ctx.jurisdiction}):\n{ctx.content}"
-                for i, ctx in enumerate(evidence[:5])  # Top 5 pieces of evidence
-            ])
-            context_parts.append(f"LEGAL PRECEDENTS:\n{evidence_text}")
-        
-        # Combine all context
-        full_context = "\n\n" + "="*50 + "\n\n".join(context_parts)
-        
-        # Generate response using LLM (placeholder for now)
-        try:
-            # This will be replaced with actual Vertex AI call
-            response = await ResponseGenerator._call_vertex_ai(question, full_context)
-            return response
-        except Exception as e:
-            logger.error(f"LLM response generation failed: {e}")
-            return ResponseGenerator._create_fallback_response(question, evidence)
-    
-    @staticmethod
-    async def _call_vertex_ai(question: str, context: str) -> str:
-        """Call Vertex AI Gemini for response generation"""
-        # Placeholder - will be implemented in services
-        prompt = f"""
-You are a legal document assistant helping people with limited legal knowledge understand contracts and legal documents.
-
-INSTRUCTIONS:
-1. Provide clear, simple explanations avoiding legal jargon
-2. Use everyday language and analogies when possible
-3. Highlight potential risks or important considerations
-4. Suggest when to consult a professional lawyer
-5. Be concise but comprehensive
-6. Include specific references to the provided context
-
-CONTEXT:
-{context}
-
-USER QUESTION: {question}
-
-RESPONSE (in simple, non-legal language):
-"""
-        
-        # Fallback response for now
-        return ResponseGenerator._create_fallback_response(question, [])
-    
-    @staticmethod
-    def _create_fallback_response(question: str, evidence: List[RAGContextItem]) -> str:
-        """Create a structured fallback response"""
-        question_lower = question.lower()
-        
-        # Risk-related fallback
-        if any(word in question_lower for word in ["risk", "danger", "problem"]):
-            return f"""Based on your question about potential risks, here's what you should know:
-
-🔍 **What I found**: {len(evidence)} relevant legal precedents were identified for your question.
-
-⚠️ **Key Considerations**:
-- Legal documents often contain terms that may not be immediately obvious
-- It's important to understand your obligations and potential liabilities
-- Consider the long-term implications of any commitments
-
-💡 **Recommendation**: Given the complexity of legal language, I recommend having a qualified attorney review the specific clauses you're concerned about.
-
-📋 **Next Steps**: Feel free to ask more specific questions about particular sections or terms you'd like me to explain further."""
-
-        # Definition-related fallback
-        elif any(phrase in question_lower for phrase in ["what is", "what does", "define"]):
-            return f"""I understand you're looking for a clear explanation. Here's what I can tell you:
-
-📖 **Simple Explanation**: Legal terms can be complex, but I'll break this down in everyday language.
-
-🔍 **Context**: Based on {len(evidence)} similar legal documents, this term typically refers to specific obligations or rights.
-
-💭 **In Plain English**: Think of legal contracts like detailed instruction manuals - they specify exactly what each party must do and what happens if they don't.
-
-❓ **Still Unclear?**: Feel free to ask follow-up questions or request examples to make this concept clearer."""
-
-        # General fallback
-        else:
-            return f"""Thank you for your question. I've searched through legal databases and found {len(evidence)} relevant documents to help answer your question.
-
-🎯 **Key Points**:
-- Legal documents are designed to protect all parties involved
-- Understanding your rights and obligations is crucial
-- Different jurisdictions may have varying interpretations
-
-📚 **Based on Legal Research**: The information I'm providing comes from analysis of similar legal documents and established precedents.
-
-⚖️ **Important Note**: While I can help explain general concepts, specific legal advice should always come from a qualified attorney familiar with your jurisdiction and circumstances.
-
-Would you like me to explain any specific aspect in more detail?"""
-
-@router.post("/", response_model=ChatResponse)
-async def chat_with_document(
-    request: ChatRequest,
-    background_tasks: BackgroundTasks
-):
-    """
-    Chat with legal document using RAG and LLM
-    
-    Provides intelligent Q&A about legal documents with:
-    - Context-aware responses
-    - Legal precedent citations
-    - Simplified explanations for non-lawyers
-    - Conversation continuity
-    """
-    try:
         # Validate and process question
-        question = QuestionProcessor.validate_question(request.question)
+        question = QuestionProcessor.validate_question(question)
         question_intent = QuestionProcessor.extract_question_intent(question)
         
         logger.info(f"Processing chat question: {question[:100]}...")
         logger.debug(f"Question intent: {question_intent}")
         
         # Get or create conversation
-        conversation_id = request.conversation_id
         if conversation_id:
             conversation = ConversationManager.get_conversation(conversation_id)
             if not conversation:
@@ -351,29 +244,28 @@ async def chat_with_document(
             conversation = ConversationManager.get_conversation(conversation_id)
         
         # Store document context if provided
-        if request.ocr and conversation:
-            conversation["context"]["current_document"] = request.ocr.dict()
-            if request.summary_hint:
-                conversation["document_summary"] = request.summary_hint
+        if ocr and conversation:
+            conversation["context"]["current_document"] = ocr.dict()
+            if summary_hint:
+                conversation["document_summary"] = summary_hint
         
         # Retrieve relevant contexts using RAG
-        logger.debug("Retrieving legal contexts...")
-        evidence = await retrieve_comprehensive_evidence(
+        logger.debug("Retrieving legal contexts from RAG...")
+        evidence = await self._retrieve_comprehensive_evidence(
             question, 
             question_intent,
-            request.ocr,
+            ocr,
             conversation
         )
         
         logger.info(f"Retrieved {len(evidence)} evidence items")
         
-        # Generate response using LLM
-        logger.debug("Generating LLM response...")
-        answer = await ResponseGenerator.generate_legal_response(
+        # Generate intelligent response using RAG + Vertex AI
+        logger.debug("Generating AI response...")
+        answer = await rag.answer_with_vertex(
             question=question,
-            evidence=evidence,
-            conversation_context=conversation,
-            document_context=request.ocr
+            contexts=evidence,
+            summary_hint=conversation.get("document_summary")
         )
         
         # Update conversation history
@@ -381,16 +273,113 @@ async def chat_with_document(
             conversation_id, question, answer, evidence
         )
         
+        logger.info(f"Chat response generated successfully for conversation {conversation_id}")
+        
+        return {
+            "answer": answer,
+            "evidence": evidence,
+            "conversation_id": conversation_id
+        }
+    
+    async def _retrieve_comprehensive_evidence(
+        self,
+        question: str,
+        question_intent: Dict[str, Any],
+        document_context: Optional[OCRText] = None,
+        conversation: Optional[Dict] = None
+    ) -> List[RAGContextItem]:
+        """Retrieve evidence from multiple sources"""
+        try:
+            evidence_items = []
+            
+            # Primary: Retrieve from Milvus using RAG service
+            logger.debug("Searching Milvus for relevant legal precedents...")
+            milvus_evidence = await rag.retrieve_contexts(question, top_k=5)
+            evidence_items.extend(milvus_evidence)
+            
+            # Secondary: Search within current document if provided
+            if document_context and document_context.blocks:
+                logger.debug("Searching current document context...")
+                document_evidence = self._search_document_context(question, document_context)
+                evidence_items.extend(document_evidence)
+            
+            # Sort by relevance/similarity score
+            evidence_items.sort(key=lambda x: x.similarity, reverse=True)
+            
+            # Return top 8 items to avoid overwhelming the LLM
+            final_evidence = evidence_items[:8]
+            logger.info(f"Compiled {len(final_evidence)} total evidence items")
+            
+            return final_evidence
+            
+        except Exception as e:
+            logger.error(f"Evidence retrieval failed: {e}")
+            return []
+    
+    def _search_document_context(self, question: str, document: OCRText) -> List[RAGContextItem]:
+        """Search within the current document for relevant sections"""
+        relevant_blocks = []
+        question_lower = question.lower()
+        question_words = [word for word in question_lower.split() if len(word) > 3]
+        
+        for i, block in enumerate(document.blocks):
+            block_lower = block.text.lower()
+            
+            # Enhanced keyword matching
+            relevance_score = 0
+            for word in question_words:
+                if word in block_lower:
+                    relevance_score += 1
+            
+            # Only include blocks with reasonable relevance
+            if relevance_score > 0:
+                similarity = relevance_score / len(question_words) if question_words else 0
+                
+                relevant_blocks.append(RAGContextItem(
+                    chunk_id=i,
+                    content=block.text,
+                    doc_type="current_document",
+                    jurisdiction="current",
+                    date=datetime.now().isoformat(),
+                    source_url="current_document",
+                    similarity=similarity
+                ))
+        
+        # Return top 3 most relevant blocks from current document
+        return sorted(relevant_blocks, key=lambda x: x.similarity, reverse=True)[:3]
+
+
+# Initialize global chat service
+_chat_service = ChatService()
+
+
+@router.post("/", response_model=ChatResponse)
+async def chat_with_document(
+    request: ChatRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Chat with legal document using RAG and LLM
+    
+    Provides intelligent Q&A about legal documents with:
+    - Context-aware responses using Vertex AI
+    - Legal precedent citations from Milvus
+    - Simplified explanations for non-lawyers
+    - Conversation continuity
+    """
+    try:
+        # Handle the chat request using our service
+        response_data = await _chat_service.handle_chat_request(
+            question=request.question,
+            conversation_id=request.conversation_id,
+            ocr=request.ocr,
+            summary_hint=request.summary_hint
+        )
+        
         # Schedule cleanup in background
         background_tasks.add_task(ConversationManager.cleanup_expired_conversations)
         
-        logger.info(f"Chat response generated successfully for conversation {conversation_id}")
-        
-        return ChatResponse(
-            answer=answer,
-            evidence=evidence,
-            conversation_id=conversation_id
-        )
+        return ChatResponse(**response_data)
         
     except HTTPException:
         raise
@@ -401,61 +390,6 @@ async def chat_with_document(
             detail=f"Chat processing failed: {str(e)}"
         )
 
-async def retrieve_comprehensive_evidence(
-    question: str,
-    question_intent: Dict[str, Any],
-    document_context: Optional[OCRText] = None,
-    conversation: Optional[Dict] = None
-) -> List[RAGContextItem]:
-    """Retrieve evidence from multiple sources"""
-    try:
-        evidence_items = []
-        
-        # Retrieve from Milvus (2020-2025 data)
-        milvus_evidence = await rag.retrieve_contexts(question, top_k=5)
-        evidence_items.extend(milvus_evidence)
-        
-        # If we have document context, search within it
-        if document_context and document_context.blocks:
-            document_evidence = search_document_context(question, document_context)
-            evidence_items.extend(document_evidence)
-        
-        # Sort by relevance/similarity score
-        evidence_items.sort(key=lambda x: x.similarity, reverse=True)
-        
-        # Return top 8 items to avoid overwhelming the LLM
-        return evidence_items[:8]
-        
-    except Exception as e:
-        logger.error(f"Evidence retrieval failed: {e}")
-        return []
-
-def search_document_context(question: str, document: OCRText) -> List[RAGContextItem]:
-    """Search within the current document for relevant sections"""
-    relevant_blocks = []
-    question_lower = question.lower()
-    
-    for i, block in enumerate(document.blocks):
-        block_lower = block.text.lower()
-        
-        # Simple keyword matching (can be enhanced with embeddings)
-        relevance_score = 0
-        for word in question_lower.split():
-            if len(word) > 3 and word in block_lower:
-                relevance_score += 1
-        
-        if relevance_score > 0:
-            relevant_blocks.append(RAGContextItem(
-                chunk_id=i,
-                content=block.text,
-                doc_type="current_document",
-                jurisdiction="current",
-                date=datetime.now().isoformat(),
-                source_url="current_document",
-                similarity=relevance_score / len(question_lower.split())
-            ))
-    
-    return sorted(relevant_blocks, key=lambda x: x.similarity, reverse=True)[:3]
 
 @router.get("/conversations/{conversation_id}")
 async def get_conversation_history(conversation_id: str):
@@ -475,6 +409,7 @@ async def get_conversation_history(conversation_id: str):
         "message_count": len(conversation["history"])
     }
 
+
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str):
     """Delete a conversation"""
@@ -487,6 +422,7 @@ async def delete_conversation(conversation_id: str):
     ConversationManager.cleanup_conversation(conversation_id)
     return {"message": "Conversation deleted successfully"}
 
+
 @router.get("/health")
 async def chat_health():
     """Health check for chat service"""
@@ -496,12 +432,14 @@ async def chat_health():
         "service": "chat",
         "active_conversations": active_conversations,
         "features": [
+            "rag_integration",
+            "vertex_ai_responses", 
             "conversation_management",
-            "rag_integration", 
-            "llm_responses",
-            "legal_simplification"
+            "legal_simplification",
+            "document_context_search"
         ]
     }
+
 
 @router.get("/stats")
 async def chat_statistics():
@@ -517,5 +455,7 @@ async def chat_statistics():
         "average_messages_per_conversation": (
             total_messages / total_conversations if total_conversations > 0 else 0
         ),
-        "conversation_timeout_hours": CONVERSATION_TIMEOUT.total_seconds() / 3600
+        "conversation_timeout_hours": CONVERSATION_TIMEOUT.total_seconds() / 3600,
+        "rag_integration": "enabled",
+        "vertex_ai_integration": "enabled"
     }

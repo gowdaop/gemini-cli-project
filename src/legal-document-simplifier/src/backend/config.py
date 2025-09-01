@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     MILVUS_TIMEOUT: int = 30
 
     # HuggingFace Configuration
-    HF_MODEL_NAME: str = "nlpaueb/legal-bert-base-uncased"
+    HF_MODEL_NAME: str = "law-ai/InLegalBERT"
     HF_CACHE_DIR: str = "/tmp/hf_cache"
 
     # File Upload Limits

@@ -12,7 +12,6 @@ import uvicorn
 
 from .config import settings
 from .routers import upload, analyze, chat
-# Note: chat router will be added later per user request
 from .schemas.analysis import ErrorResponse
 
 # Configure logging
@@ -25,7 +24,6 @@ logger = logging.getLogger(__name__)
 # API Key authentication
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
 
-# In your main.py, update the require_api_key function:
 async def require_api_key(x_api_key: Optional[str] = Depends(api_key_header)):
     """Global API key validation dependency"""
     
@@ -46,7 +44,6 @@ async def require_api_key(x_api_key: Optional[str] = Depends(api_key_header)):
             detail="Invalid API key"
         )
     return True
-
 
 # Lifespan events for startup/shutdown
 @asynccontextmanager
@@ -96,16 +93,7 @@ app.add_middleware(
     max_age=3600,
 )
 
-# Include API routers with authentication
-app.include_router(
-    upload.router, 
-    dependencies=[Depends(require_api_key)]
-)
-app.include_router(
-    analyze.router,
-    dependencies=[Depends(require_api_key)]
-)
-# Chat router will be added later
+# ✅ FIXED: Include each router only ONCE
 app.include_router(
     upload.router, 
     dependencies=[Depends(require_api_key)]
@@ -115,9 +103,10 @@ app.include_router(
     dependencies=[Depends(require_api_key)]
 )
 app.include_router(
-    chat.router,  # ← ADD THIS LINE
+    chat.router,
     dependencies=[Depends(require_api_key)]
 )
+
 # Request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

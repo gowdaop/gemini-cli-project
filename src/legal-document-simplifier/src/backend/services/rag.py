@@ -1,9 +1,10 @@
 import asyncio
 import logging
 import hashlib
-import json
 import time
 import os
+import json
+import requests
 from typing import List, Optional, Dict, Any, Union, Tuple
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
@@ -11,7 +12,7 @@ import uuid
 from functools import lru_cache
 from collections import OrderedDict
 
-# ✅ FIXED: Correct PyMilvus imports
+# ✅ FIXED: Simplified PyMilvus imports only
 try:
     from pymilvus import connections, Collection, utility, DataType
     from pymilvus import MilvusException
@@ -20,38 +21,12 @@ except ImportError:
     PYMILVUS_AVAILABLE = False
     MilvusException = Exception
 
-# ✅ FIXED: Correct Vertex AI imports with fallback
-try:
-    import google.cloud.aiplatform as aiplatform
-    from google.api_core import retry, exceptions as gcp_exceptions
-    VERTEX_AI_AVAILABLE = True
-except ImportError:
-    VERTEX_AI_AVAILABLE = False
-    aiplatform = None
-    gcp_exceptions = None
-
-# ✅ FIXED: Correct genai imports for new SDK
-try:
-    from google import genai
-    from google.genai import types
-    GENAI_AVAILABLE = True
-    NEW_GENAI_SDK = True
-except ImportError:
-    try:
-        import google.generativeai as genai
-        GENAI_AVAILABLE = True
-        NEW_GENAI_SDK = False
-    except ImportError:
-        GENAI_AVAILABLE = False
-        NEW_GENAI_SDK = False
-        genai = None
-        types = None
-
 from ..schemas.analysis import RAGContextItem
 from ..config import settings
 from .embedding import embed_texts_async
 
 logger = logging.getLogger(__name__)
+
 
 class RAGCache:
     """Thread-safe LRU cache with TTL for RAG operations"""
@@ -95,6 +70,7 @@ class RAGCache:
         async with self._lock:
             self.cache.clear()
             self.timestamps.clear()
+
 
 class MilvusClient:
     """Production-ready Milvus client with connection pooling and retry logic"""
@@ -146,16 +122,15 @@ class MilvusClient:
     async def _log_collection_info(self):
         """Log collection statistics"""
         try:
-            # ✅ FIX: Add parentheses to call the method
+            # ✅ FIX: Properly call the method
             stats = await asyncio.get_event_loop().run_in_executor(
                 None, 
-                lambda: self.collection.num_entities()  # Changed from .num_entities
+                lambda: self.collection.num_entities()
             )
             logger.info(f"Milvus collection {settings.MILVUS_COLLECTION} has {stats} vectors")
         except Exception as e:
             logger.debug(f"Could not get collection stats: {e}")
 
-    
     async def search(self, query_vector: List[float], top_k: int = 8, metric_type: str = "COSINE") -> List[Dict[str, Any]]:
         """Search for similar vectors in Milvus"""
         if not self.connected or not self.collection:
@@ -226,64 +201,49 @@ class MilvusClient:
         
         return processed
 
+
 class VertexAIClient:
-    """Production-ready Vertex AI client with new Google GenAI SDK"""
+    """HTTP-based Vertex AI client using direct REST API calls"""
     
     def __init__(self):
-        self.client = None
+        self.api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
         self.initialized = False
         self._generation_cache = RAGCache(max_size=200, ttl=7200)
         
     async def initialize(self):
-        """Initialize Vertex AI client with new SDK"""
+        """Initialize HTTP client"""
         if self.initialized:
             return
         
-        if not GENAI_AVAILABLE:
-            logger.warning("Google GenAI SDK not available - using fallback responses")
+        if not self.api_key:
+            logger.warning("❌ No Google API key found - using fallback responses")
             return
         
         try:
-            if NEW_GENAI_SDK and genai:
-                # ✅ NEW SDK APPROACH: Use vertexai=True for service account auth
-                if os.getenv('GOOGLE_API_KEY'):
-                    self.client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
-                    logger.info("✅ Vertex AI initialized with API key")
-                elif os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-                    self.client = genai.Client(
-                        vertexai=True,  # ✅ CRITICAL: This enables Vertex AI
-                        project=settings.GCP_PROJECT_ID,
-                        location=settings.VERTEX_LOCATION
-                    )
-                    logger.info(f"✅ Vertex AI initialized with service account for project: {settings.GCP_PROJECT_ID}")
-                else:
-                    logger.warning("No Google credentials found")
-                    return
+            # Test API connectivity
+            test_url = f"{self.base_url}/models"
+            headers = {
+                'X-Goog-Api-Key': self.api_key,
+                'Content-Type': 'application/json'
+            }
             
-            elif VERTEX_AI_AVAILABLE:
-                # Fallback to aiplatform
-                aiplatform.init(
-                    project=settings.GCP_PROJECT_ID,
-                    location=settings.VERTEX_LOCATION
-                )
-                self.client = "aiplatform_configured"
-                logger.info("✅ Vertex AI initialized with aiplatform")
-            
+            response = requests.get(test_url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                self.initialized = True
+                logger.info("✅ Vertex AI HTTP client initialized successfully")
             else:
-                logger.warning("No Vertex AI SDK available")
-                return
-            
-            self.initialized = True
-            
+                logger.warning(f"❌ API test failed: {response.status_code}")
+                
         except Exception as e:
-            logger.error(f"❌ Vertex AI initialization failed: {e}")
+            logger.error(f"❌ Vertex AI HTTP client initialization failed: {e}")
     
     async def generate_text(self, prompt: str, max_tokens: int = None, temperature: float = None) -> str:
-        """Generate text using Vertex AI with new SDK"""
+        """Generate text using direct HTTP API calls"""
         if not self.initialized:
             await self.initialize()
         
-        if not self.initialized or not self.client:
+        if not self.initialized:
             return self._create_fallback_response(prompt)
         
         cache_key = hashlib.md5(f"{prompt}_{max_tokens}_{temperature}".encode()).hexdigest()
@@ -293,42 +253,66 @@ class VertexAIClient:
             return cached_result
         
         try:
-            if NEW_GENAI_SDK and types and hasattr(self.client, 'models'):
-                # ✅ NEW SDK APPROACH
-                config = types.GenerateContentConfig(
-                    max_output_tokens=max_tokens or settings.VERTEX_MAX_TOKENS,
-                    temperature=temperature or settings.VERTEX_TEMPERATURE,
-                    top_p=0.8,
-                    top_k=40
-                )
+            # Use the model name from environment variable
+            model = getattr(settings, 'VERTEX_MODEL', 'gemini-2.0-flash')
+            url = f"{self.base_url}/models/{model}:generateContent"
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': self.api_key
+            }
+            
+            # Build request payload matching Google Studio format
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "maxOutputTokens": max_tokens or getattr(settings, 'VERTEX_MAX_TOKENS', 1024),
+                    "temperature": temperature or getattr(settings, 'VERTEX_TEMPERATURE', 0.1),
+                    "topP": 0.8,
+                    "topK": 40
+                }
+            }
+            
+            logger.info(f"🤖 Calling Vertex AI HTTP API: {model}")
+            
+            # Make HTTP request
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: requests.post(url, headers=headers, json=payload, timeout=30)
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
                 
-                response = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: self.client.models.generate_content(
-                        model=settings.VERTEX_MODEL,  # Should be gemini-2.0-flash-exp
-                        contents=[prompt],
-                        config=config
-                    )
-                )
+                # Extract text from response
+                if 'candidates' in result and len(result['candidates']) > 0:
+                    candidate = result['candidates'][0]
+                    if 'content' in candidate and 'parts' in candidate['content']:
+                        generated_text = candidate['content']['parts'][0].get('text', '')
+                        
+                        if generated_text:
+                            await self._generation_cache.set(cache_key, generated_text)
+                            logger.info("✅ Vertex AI HTTP generation successful")
+                            return generated_text
                 
-                generated_text = response.text if hasattr(response, 'text') else str(response)
-                logger.info("✅ Vertex AI generation successful (new SDK)")
+                logger.warning("❌ Empty response from Vertex AI")
+                return self._create_fallback_response(prompt)
                 
             else:
-                # Fallback to aiplatform
-                model = aiplatform.GenerativeModel(settings.VERTEX_MODEL)
-                response = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: model.generate_content(prompt)
-                )
-                generated_text = response.text if hasattr(response, 'text') else str(response)
-                logger.info("✅ Vertex AI generation successful (aiplatform)")
-            
-            await self._generation_cache.set(cache_key, generated_text)
-            return generated_text
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                logger.error(f"❌ Vertex AI HTTP API failed: {error_msg}")
+                return self._create_fallback_response(prompt)
             
         except Exception as e:
-            logger.error(f"❌ Vertex AI generation failed: {e}")
+            logger.error(f"❌ Vertex AI HTTP generation failed: {e}")
             return self._create_fallback_response(prompt)
     
     def _create_fallback_response(self, prompt: str) -> str:
@@ -357,6 +341,7 @@ class VertexAIClient:
                    "🔍 **Key Points**: Based on legal precedents, these terms establish specific obligations and rights.\n\n"
                    "💭 **In Plain English**: Legal contracts specify exactly what each party must do.\n\n"
                    "❓ **Need More Details?**: Feel free to ask specific questions about any clause.")
+
 
 class RAGService:
     """Comprehensive RAG service combining Milvus, embeddings, and Vertex AI"""
@@ -450,8 +435,6 @@ class RAGService:
         except Exception as e:
             logger.error(f"❌ Context retrieval failed: {e}", exc_info=True)
             return []
-
-
         
     async def summarize_200w(self, text: str) -> str:
         """Generate a summary in ≤200 words"""
@@ -462,23 +445,21 @@ class RAGService:
         logger.info(f"🔍 Generating summary for {len(text)} characters")
         logger.debug(f"📄 Input text preview: {text[:200]}...")
         
-        prompt = f"""
-    You are a legal document assistant. Create a concise summary of this legal document in exactly 200 words or fewer.
+        prompt = f"""You are a legal document assistant. Create a concise summary of this legal document in exactly 200 words or fewer.
 
-    Focus on:
-    1. Main purpose and type of document
-    2. Key parties involved
-    3. Primary obligations and rights
-    4. Important terms and conditions
-    5. Notable risks or considerations
+Focus on:
+1. Main purpose and type of document
+2. Key parties involved
+3. Primary obligations and rights
+4. Important terms and conditions
+5. Notable risks or considerations
 
-    Use simple, non-technical language.
+Use simple, non-technical language.
 
-    Document text:
-    {text[:4000]}...
+Document text:
+{text[:4000]}...
 
-    Summary (≤200 words):
-    """
+Summary (≤200 words):"""
         
         try:
             logger.info("🤖 Calling Vertex AI for summary generation...")
@@ -505,7 +486,6 @@ class RAGService:
         except Exception as e:
             logger.error(f"❌ Summary generation failed: {e}", exc_info=True)
             return self._create_fallback_summary(text)
-
     
     def _create_fallback_summary(self, text: str) -> str:
         """Create a simple fallback summary"""
@@ -519,47 +499,139 @@ class RAGService:
     async def answer_with_vertex(self, question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:
         """Generate an answer using Vertex AI with RAG contexts"""
         
+        context_count = len(contexts)
+        
+        # Build dynamic context based on evidence
         context_text = ""
+        evidence_topics = []
         if contexts:
             context_items = []
             for i, ctx in enumerate(contexts[:5], 1):
-                context_items.append(f"Context {i} ({ctx.doc_type}, {ctx.jurisdiction}):\n{ctx.content}")
+                context_items.append(f"Legal Document {i}:\n{ctx.content}")
+                # Extract key topics from evidence for dynamic prompting
+                if "liability" in ctx.content.lower():
+                    evidence_topics.append("liability principles")
+                if "indemnif" in ctx.content.lower():
+                    evidence_topics.append("indemnification")
+                if "risk" in ctx.content.lower():
+                    evidence_topics.append("risk management")
+            
             context_text = "\n\n".join(context_items)
         
         summary_context = f"\nDocument Summary: {summary_hint}" if summary_hint else ""
         
-        prompt = f"""
-You are a legal document assistant helping people with limited legal knowledge understand contracts and legal documents.
+        # ✅ DYNAMIC PROMPT: Adapts based on evidence and question
+        prompt = f"""You are a legal document assistant. Answer the user's legal question using the provided evidence and your legal expertise.
 
-INSTRUCTIONS:
-1. Provide clear, simple explanations avoiding legal jargon
-2. Use everyday language and analogies when possible
-3. Highlight potential risks or important considerations
-4. Suggest when to consult a professional lawyer
-5. Be specific and reference the provided context
-6. Keep response focused and helpful
+    EVIDENCE ANALYSIS:
+    - Found {context_count} relevant legal documents
+    - Topics covered: {', '.join(evidence_topics) if evidence_topics else 'general legal principles'}
+    - Evidence quality: High similarity matches
 
-LEGAL CONTEXT:
-{context_text}
-{summary_context}
+    INSTRUCTIONS:
+    1. Use the legal documents below as primary evidence for your answer
+    2. Combine this evidence with your legal knowledge to provide a comprehensive response
+    3. If the documents don't directly address the question, use them as supporting context and apply relevant legal principles
+    4. Always provide a substantive, helpful answer
+    5. Use simple, clear language for non-lawyers
+    6. Include practical implications and recommendations
 
-USER QUESTION: {question}
+    LEGAL EVIDENCE:
+    {context_text}
+    {summary_context}
 
-RESPONSE (in simple, non-legal language):
-"""
+    USER QUESTION: {question}
+
+    Provide a thorough, evidence-based answer that helps the user understand the legal concept:"""
         
         try:
             answer = await self.vertex_client.generate_text(
                 prompt=prompt,
-                max_tokens=settings.VERTEX_MAX_TOKENS,
-                temperature=settings.VERTEX_TEMPERATURE
+                max_tokens=getattr(settings, 'VERTEX_MAX_TOKENS', 1024),
+                temperature=getattr(settings, 'VERTEX_TEMPERATURE', 0.3)
             )
+            
+            # ✅ RETRY LOGIC: If response seems inadequate, try enhanced prompt
+            if self._is_inadequate_response(answer):
+                logger.info("Response seems inadequate, retrying with enhanced prompt")
+                enhanced_answer = await self._retry_with_enhanced_prompt(question, contexts, summary_hint)
+                return enhanced_answer or answer
             
             return answer
             
         except Exception as e:
             logger.error(f"Answer generation failed: {e}")
-            return self._create_fallback_answer(question, contexts)
+            # Only use minimal fallback as last resort
+            return f"I found {context_count} relevant legal documents but encountered an error generating the response. Please try rephrasing your question."
+
+    def _is_inadequate_response(self, answer: str) -> bool:
+        """Check if response seems inadequate and needs retry"""
+        if not answer or len(answer.strip()) < 50:
+            return True
+        
+        inadequate_phrases = [
+            "no information", "cannot answer", "not provided", 
+            "no context", "unable to answer", "insufficient information",
+            "i am sorry", "i cannot"
+        ]
+        
+        return any(phrase in answer.lower() for phrase in inadequate_phrases)
+
+    async def _retry_with_enhanced_prompt(self, question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:
+        """Retry with more specific prompt when first attempt fails"""
+        
+        context_text = "\n\n".join([f"Document {i+1}: {ctx.content}" for i, ctx in enumerate(contexts[:3])])
+        
+        # More directive prompt for retry
+        enhanced_prompt = f"""You are a knowledgeable legal assistant. The user has asked about a legal topic and I've found relevant legal documents.
+
+    TASK: Provide a comprehensive answer about the legal concept in the question, using both the legal documents provided and your legal expertise.
+
+    RETRIEVED LEGAL DOCUMENTS:
+    {context_text}
+
+    USER'S LEGAL QUESTION: {question}
+
+    REQUIREMENTS:
+    - Explain the legal concept clearly in simple terms
+    - Use the provided documents as supporting evidence where relevant
+    - Apply general legal principles even if documents don't directly address the topic
+    - Include practical advice and risk considerations
+    - Make the response helpful and actionable
+
+    Generate a detailed, informative response:"""
+        
+        try:
+            return await self.vertex_client.generate_text(
+                prompt=enhanced_prompt,
+                max_tokens=getattr(settings, 'VERTEX_MAX_TOKENS', 1024),
+                temperature=0.4  # Slightly higher temperature for more creative response
+            )
+        except Exception as e:
+            logger.error(f"Enhanced prompt retry failed: {e}")
+            return None
+
+    
+    def _create_context_aware_fallback(self, question: str, contexts: List[RAGContextItem]) -> str:
+        """Create fallback that acknowledges found evidence"""
+        context_count = len(contexts)
+        
+        if context_count > 0:
+            return f"""Based on {context_count} relevant legal documents I found, here's what I can tell you:
+
+🔍 **Legal Research**: I found relevant information in legal documents including regulations about various legal matters and statutory frameworks.
+
+📚 **Key Insights**: 
+- Legal obligations and rights are clearly defined in statutory frameworks
+- Compliance requirements are established by appropriate authorities
+- Penalties and procedures are specified for various scenarios
+
+💡 **Recommendation**: While I found relevant legal precedents, the specific details are complex. I recommend consulting with a qualified attorney who can provide advice specific to your situation.
+
+❓ **Need More Details**: Feel free to ask more specific questions about the legal concepts you're interested in."""
+        
+        else:
+            return "I couldn't find specific legal precedents for your question. Please try rephrasing your question or ask about a specific legal concept."
     
     def _create_fallback_answer(self, question: str, contexts: List[RAGContextItem]) -> str:
         """Create fallback answer when Vertex AI is unavailable"""
@@ -598,18 +670,19 @@ Feel free to ask more specific questions about particular clauses or terms!"""
             "initialized": self.initialized,
             "milvus_connected": self.milvus_client.connected,
             "vertex_initialized": self.vertex_client.initialized,
-            "collection_name": settings.MILVUS_COLLECTION,
+            "collection_name": getattr(settings, 'MILVUS_COLLECTION', 'unknown'),
             "embedding_dimension": 768,
             "dependencies": {
                 "pymilvus_available": PYMILVUS_AVAILABLE,
-                "vertex_ai_available": VERTEX_AI_AVAILABLE,
-                "genai_available": GENAI_AVAILABLE,
-                "new_genai_sdk": NEW_GENAI_SDK
+                "requests_available": True,  # We know this is available since we're using it
+                "http_client": True
             }
         }
 
+
 # Global service instance
 _rag_service = None
+
 
 async def get_rag_service() -> RAGService:
     """Get or create the global RAG service instance"""
@@ -619,21 +692,25 @@ async def get_rag_service() -> RAGService:
         await _rag_service.initialize()
     return _rag_service
 
+
 # Public API functions for router integration
 async def retrieve_contexts(query: str, top_k: int = 8) -> List[RAGContextItem]:
     """Retrieve relevant contexts for a query"""
     service = await get_rag_service()
     return await service.retrieve_contexts(query, top_k)
 
+
 async def summarize_200w(text: str) -> str:
     """Generate a summary in ≤200 words"""
     service = await get_rag_service()
     return await service.summarize_200w(text)
 
+
 async def answer_with_vertex(question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:
     """Generate an answer using Vertex AI with RAG contexts"""
     service = await get_rag_service()
     return await service.answer_with_vertex(question, contexts, summary_hint)
+
 
 async def health_check() -> Dict[str, Any]:
     """Health check for RAG service"""

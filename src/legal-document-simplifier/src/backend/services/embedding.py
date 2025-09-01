@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 @dataclass
 class EmbeddingConfig:
-    model_name: str = "nlpaueb/legal-bert-base-uncased"
+    model_name: str = "law-ai/InLegalBERT"  # ✅ Changed from nlpaueb/legal-bert-base-uncased
     embedding_dimension: int = 768
     max_sequence_length: int = 512
     batch_size: int = 8
