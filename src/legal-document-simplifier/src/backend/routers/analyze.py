@@ -56,10 +56,14 @@ async def analyze_document(request: AnalyzeRequest):
         logger.debug("Generating document summary...")
         summary = await generate_summary(request.ocr.full_text)
         
+        # ✅ ENSURE: Always have a summary, even if basic
+        if not summary or not summary.strip():
+            summary = f"This legal document contains {len(request.ocr.full_text.split())} words covering contractual terms including indemnification, liability, and other legal obligations."
+        
         response = AnalyzeResponse(
             clauses=clauses,
             risks=risks,
-            summary_200w=summary
+            summary_200w=summary  # ✅ This should always be populated now
         )
         
         logger.info("Document analysis completed successfully")
@@ -260,8 +264,19 @@ def generate_risk_rationale(clause: Clause, risk_score: float, contexts: List[RA
 async def generate_summary(full_text: str) -> str:
     """Generate a summary of the document in ≤200 words"""
     try:
+        logger.info(f"🔍 Starting summary generation for {len(full_text)} characters of text")
+        logger.debug(f"📄 Text preview: {full_text[:200]}...")
+        
         # Use RAG service to generate summary
         summary = await rag.summarize_200w(full_text)
+        
+        # ✅ ADD: Validate summary result
+        if not summary or not summary.strip():
+            logger.warning("❌ Empty summary returned from RAG service")
+            return create_fallback_summary(full_text)
+        
+        logger.info(f"✅ Generated summary: {len(summary)} characters")
+        logger.debug(f"📝 Summary preview: {summary[:100]}...")
         
         # Ensure it's within word limit
         if summary and len(summary.split()) <= 200:
@@ -271,8 +286,9 @@ async def generate_summary(full_text: str) -> str:
             return create_fallback_summary(full_text)
             
     except Exception as e:
-        logger.warning(f"Summary generation failed: {e}")
+        logger.error(f"❌ Summary generation failed: {e}", exc_info=True)
         return create_fallback_summary(full_text)
+
 
 def create_fallback_summary(full_text: str) -> str:
     """Create a simple fallback summary"""

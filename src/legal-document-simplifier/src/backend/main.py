@@ -25,22 +25,28 @@ logger = logging.getLogger(__name__)
 # API Key authentication
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
 
+# In your main.py, update the require_api_key function:
 async def require_api_key(x_api_key: Optional[str] = Depends(api_key_header)):
     """Global API key validation dependency"""
+    
+    # TEMPORARY DEBUG LOGGING - REMOVE AFTER FIXING
+    print(f"🔍 Expected API key: '{settings.API_KEY}'")
+    print(f"🔍 Received API key: '{x_api_key}'")
+    print(f"🔍 Keys match: {x_api_key == settings.API_KEY}")
+    
     if not x_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key header 'x-api-key' is required"
         )
-    
     if x_api_key != settings.API_KEY:
         logger.warning(f"Invalid API key attempted: {x_api_key[:8]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key"
         )
-    
     return True
+
 
 # Lifespan events for startup/shutdown
 @asynccontextmanager

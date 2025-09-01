@@ -36,6 +36,9 @@ pydantic-settings
 # Development
 pytest
 black
-flake8pymilvus>=2.3.0
-google-cloud-aiplatform>=1.34.0
-google-generativeai>=0.3.0
+# Add new official SDKs:
+google-genai>=1.1.0
+google-cloud-aiplatform>=1.38.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1

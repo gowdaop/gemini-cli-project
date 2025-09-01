@@ -47,3 +47,7 @@ python scripts/generate_openapi.py \
 docker compose restart legal-simplifier
 
 docker compose up --build legal-simplifier
+
+docker compose logs -f legal-simplifier
+
+pytest -v /app/src/legal-document-simplifier/src/backend/tests/
