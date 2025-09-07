@@ -232,7 +232,23 @@ services:
       - MILVUS_URL=milvus:19530
     networks:
       - legal_network
-
+  ########################################################
+  # 9. React-TS Frontend (Vite build -> Nginx)
+  ########################################################
+  frontend:
+    build:
+      context: .
+      dockerfile: src/legal-document-simplifier/docker/frontend.Dockerfile     # see next section
+    ports:
+      - "3000:80"                     # localhost:3000 → Nginx
+    environment:
+      - VITE_API_URL=http://legal-simplifier:8000
+      - VITE_API_KEY=legal-doc-analyzer-2025-secure-key-f47d4a2c
+    depends_on:
+      legal-simplifier:
+        condition: service_healthy
+    networks:
+      - legal_network
   ########################################################
   # 8. Nginx (Optional - Load Balancer/Reverse Proxy)
   ########################################################
