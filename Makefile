@@ -53,3 +53,10 @@ docker compose logs -f legal-simplifier
 pytest -v /app/src/legal-document-simplifier/src/backend/tests/
 
 docker compose down && docker compose up -d
+
+# one-shot build & run
+docker compose build --no-cache
+docker compose up -d
+
+# local hot-reload for React
+docker compose --profile dev up frontend-dev
