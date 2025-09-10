@@ -25,14 +25,14 @@ class Settings(BaseSettings):
 
     # GCP Configuration
     GCP_PROJECT_ID: str = os.getenv("GCP_PROJECT_ID", "")
-    GCP_LOCATION: str = "us-central1"
-    DOCAI_PROCESSOR_ID: str = ""
+    GCP_LOCATION: str = "us"
+    DOCAI_PROCESSOR_ID: str = "bd8d8a755148c6a1"
     DOCAI_PROCESSOR_VERSION: str = "rc"
     GOOGLE_APPLICATION_CREDENTIALS: str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 
     # Vertex AI Configuration
     VERTEX_MODEL: str = os.getenv("VERTEX_MODEL", "gemini-2.0-flash")
-    VERTEX_LOCATION: str = os.getenv("VERTEX_LOCATION", "us-central1")
+    VERTEX_LOCATION: str = os.getenv("VERTEX_LOCATION", "us")
     VERTEX_MAX_TOKENS: int = int(os.getenv("VERTEX_MAX_TOKENS", "2048"))
     VERTEX_TEMPERATURE: float = float(os.getenv("VERTEX_TEMPERATURE", "0.3"))
 

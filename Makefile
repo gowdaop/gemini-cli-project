@@ -60,3 +60,5 @@ docker compose up -d
 
 # local hot-reload for React
 docker compose --profile dev up frontend-dev
+
+legal-doc-analyzer-2025-secure-key-f47d4a2c

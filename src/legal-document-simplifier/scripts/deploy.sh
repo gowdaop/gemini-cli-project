@@ -4,7 +4,7 @@ set -e
 # Configuration
 PROJECT_ID=${GCP_PROJECT_ID:-"your-project-id"}
 SERVICE_NAME="legal-document-api"
-REGION="us-central1"
+REGION="us"
 IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
 
 echo "Deploying Legal Document API to Cloud Run..."

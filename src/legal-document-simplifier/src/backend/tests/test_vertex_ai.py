@@ -49,7 +49,7 @@ async def test_vertex_ai():
             client = genai.Client(
                 vertexai=True,
                 project=project_id,
-                location="us-central1"
+                location="us"
             )
             print(f"✅ Client initialized with service account")
     except Exception as e:

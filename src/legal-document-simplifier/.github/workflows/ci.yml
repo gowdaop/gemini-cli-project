@@ -137,7 +137,7 @@ jobs:
         gcloud run deploy legal-api-staging \
           --source . \
           --platform managed \
-          --region us-central1 \
+          --region us \
           --allow-unauthenticated \
           --set-env-vars="DEBUG=false,USE_SECRET_MANAGER=true" \
           --memory=2Gi \
