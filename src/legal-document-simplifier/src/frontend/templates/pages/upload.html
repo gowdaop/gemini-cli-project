@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Documents - Legal Document Simplifier</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="../../static/css/base/reset.css">
+    <link rel="stylesheet" href="../../static/css/base/variables.css">
+    <link rel="stylesheet" href="../../static/css/base/global.css">
+    <link rel="stylesheet" href="../../static/css/main.css">
+    <link rel="stylesheet" href="../../static/css/pages/upload.css">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Header will be injected by HeaderComponent -->
+    
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="breadcrumb">
+                    <a href="../index.html" class="breadcrumb-item">
+                        <i class="fas fa-home"></i>
+                        Home
+                    </a>
+                    <span class="breadcrumb-separator">/</span>
+                    <span class="breadcrumb-item active">Upload</span>
+                </div>
+                
+                <h1 class="page-title">Upload Legal Document</h1>
+                <p class="page-description">
+                    Upload your legal documents for AI-powered analysis and risk assessment. 
+                    We support PDF, DOCX, PNG, and JPEG files up to 20MB.
+                </p>
+            </div>
+
+            <!-- Upload Section -->
+            <div class="upload-section">
+                <div class="upload-card">
+                    <!-- File Drop Zone -->
+                    <div id="dropzone" class="dropzone" data-state="idle">
+                        <!-- ✅ DEFAULT STATE: Dropzone Content -->
+                        <div class="dropzone-content">
+                            <div class="dropzone-icon">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <div class="dropzone-text">
+                                <h3>Drop your document here</h3>
+                                <p>or <button type="button" class="link-button">browse files</button></p>
+                            </div>
+                            <div class="dropzone-formats">
+                                <span class="format-tag">PDF</span>
+                                <span class="format-tag">DOCX</span>
+                                <span class="format-tag">PNG</span>
+                                <span class="format-tag">JPEG</span>
+                                <span class="size-limit">Max 20MB</span>
+                            </div>
+                        </div>
+                        
+                        <!-- ✅ CRITICAL: File Input -->
+                        <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg" hidden>
+                        
+                        <!-- ✅ FIXED: Upload Progress -->
+                        <div class="upload-progress" style="display: none;">
+                            <div class="progress-icon">
+                                <i class="fas fa-file-upload"></i>
+                            </div>
+                            <div class="progress-details">
+                                <h4 id="uploadFileName">Processing document...</h4>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <div class="progress-steps">
+                                    <div class="step" data-step="upload">
+                                        <i class="fas fa-upload"></i>
+                                        <span>Upload</span>
+                                    </div>
+                                    <div class="step" data-step="ocr">
+                                        <i class="fas fa-eye"></i>
+                                        <span>OCR</span>
+                                    </div>
+                                    <div class="step" data-step="analyze">
+                                        <i class="fas fa-brain"></i>
+                                        <span>Analyze</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- ✅ FIXED: Success State -->
+                        <div class="upload-success" style="display: none;">
+                            <div class="success-icon">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="success-details">
+                                <h4>Document processed successfully!</h4>
+                                <p id="successMessage">Your document has been analyzed and results are ready.</p>
+                                <div class="success-actions">
+                                    <button class="btn btn-primary" id="viewResultsBtn">
+                                        <i class="fas fa-chart-line"></i>
+                                        View Analysis
+                                    </button>
+                                    <button class="btn btn-outline" id="uploadAnotherBtn">
+                                        <i class="fas fa-plus"></i>
+                                        Upload Another
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- ✅ FIXED: Error State -->
+                        <div class="upload-error" style="display: none;">
+                            <div class="error-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="error-details">
+                                <h4>Upload failed</h4>
+                                <p id="errorMessage">Something went wrong. Please try again.</p>
+                                <div class="error-actions">
+                                    <button class="btn btn-primary" id="retryBtn">
+                                        <i class="fas fa-redo"></i>
+                                        Try Again
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Upload Tips -->
+                    <div class="upload-tips">
+                        <h4><i class="fas fa-lightbulb"></i> Tips for better results</h4>
+                        <ul>
+                            <li>Ensure document text is clear and legible</li>
+                            <li>PDF files generally provide the most accurate results</li>
+                            <li>Multi-page documents are fully supported</li>
+                            <li>Processing time depends on document size and complexity</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- ✅ FIXED: Recent Uploads -->
+                <div class="recent-uploads">
+                    <h3>Recent Documents</h3>
+                    <div class="recent-list" id="recentList">
+                        <!-- Content will be populated by JavaScript -->
+                        <div class="no-recent-message" style="text-align: center; padding: 2rem; color: #64748b;">
+                            <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+                            <p>No recent documents yet. Upload your first document to get started!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Processing your document...</p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="brand-logo">
+                        <i class="fas fa-balance-scale"></i>
+                        <span>LegalSimplifier</span>
+                    </div>
+                    <p>Empowering legal professionals with AI-driven document analysis</p>
+                </div>
+                <div class="footer-links">
+                    <div class="link-group">
+                        <h4>Product</h4>
+                        <a href="#features">Features</a>
+                        <a href="#dashboard">Dashboard</a>
+                        <a href="#pricing">Pricing</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Company</h4>
+                        <a href="#about">About Us</a>
+                        <a href="#contact">Contact</a>
+                        <a href="#careers">Careers</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Resources</h4>
+                        <a href="#docs">Documentation</a>
+                        <a href="#api">API</a>
+                        <a href="#support">Support</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 LegalSimplifier. All rights reserved. | Powered by AI Intelligence</p>
+                <div class="footer-social">
+                    <a href="#"><i class="fab fa-twitter"></i></a>
+                    <a href="#"><i class="fab fa-linkedin"></i></a>
+                    <a href="#"><i class="fab fa-github"></i></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ✅ CRITICAL: Fixed JavaScript Loading Order -->
+    <script src="../../static/js/utils/helpers.js"></script>
+    <script src="../../static/js/components/header.js"></script>
+    <script src="../../static/js/api/upload.js"></script>              <!-- ✅ RE-ADDED: Contains UploadAPI & AnalysisAPI -->
+    <script src="../../static/js/pages/upload.js"></script>            <!-- ✅ MUST BE UPDATED to use UploadAPI/AnalysisAPI -->
+    <script src="../../static/js/main.js"></script>
+</body>
+</html>

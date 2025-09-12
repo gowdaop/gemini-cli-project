@@ -16,6 +16,7 @@ from ..schemas.analysis import (
     RAGContextItem,
     ErrorResponse
 )
+from ..services.risk import assess_document_risks
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ async def analyze_document(request: AnalyzeRequest):
     Takes OCR-extracted text and returns:
     - Identified legal clauses with classifications
     - Risk assessments with supporting evidence
-    - Summary in ≤200 words
+    - Summary in ≤300 words
     """
     try:
         # Input validation
@@ -550,5 +551,5 @@ async def get_capabilities():
         "risk_levels": [level.value for level in RiskLevel],
         "max_blocks": getattr(settings, 'MAX_CLAUSE_BLOCKS', 100),
         "timeout_seconds": 300,
-        "max_summary_words": 200
+        "max_summary_words": 300
     }

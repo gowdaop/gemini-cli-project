@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEGAL-SIMPLIFIER - Component Testing</title>
+    <link rel="stylesheet" href="static/css/main.css">
+</head>
+<body>
+    <div style="background: #fef3c7; color: #92400e; padding: 12px; text-align: center; font-weight: 600;">
+        🧪 TESTING ENVIRONMENT - All Components Demo
+    </div>
+    
+    <main class="p-8">
+        <h1 style="font-size: 2rem; font-weight: bold; margin-bottom: 1rem; color: #1f2937;">
+            LEGAL-SIMPLIFIER Frontend Test
+        </h1>
+        
+        <div style="margin-bottom: 2rem;">
+            <h2 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem;">Button Tests</h2>
+            <button style="background: #3b82f6; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; margin-right: 12px;">
+                Primary Button
+            </button>
+            <button style="background: white; color: #374151; padding: 12px 24px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;">
+                Secondary Button
+            </button>
+        </div>
+        
+        <div style="margin-bottom: 2rem;">
+            <h2 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem;">CSS Loading Test</h2>
+            <p id="css-status" style="color: #dc2626;">❌ CSS not loaded</p>
+        </div>
+        
+        <div style="margin-bottom: 2rem;">
+            <h2 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem;">JavaScript Test</h2>
+            <button onclick="testJS()" style="background: #059669; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer;">
+                Test JavaScript
+            </button>
+            <p id="js-status" style="margin-top: 12px; color: #dc2626;">❌ JavaScript not loaded</p>
+        </div>
+    </main>
+
+    <script>
+        function testJS() {
+            document.getElementById('js-status').innerHTML = '✅ JavaScript working!';
+            document.getElementById('js-status').style.color = '#059669';
+        }
+        
+        // Test CSS loading
+        window.addEventListener('load', function() {
+            const cssLinks = document.querySelectorAll('link[rel="stylesheet"]');
+            if (cssLinks.length > 0) {
+                document.getElementById('css-status').innerHTML = `✅ Found ${cssLinks.length} CSS file(s)`;
+                document.getElementById('css-status').style.color = '#059669';
+            }
+        });
+        
+        console.log('🚀 Test page loaded successfully!');
+    </script>
+</body>
+</html>
+<script src="static/js/main.js"></script>

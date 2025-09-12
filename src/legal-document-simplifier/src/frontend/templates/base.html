@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Legal Document Simplifier{% endblock %}</title>
+    
+    <!-- Base CSS Files -->
+    <link rel="stylesheet" href="../static/css/base/reset.css">
+    <link rel="stylesheet" href="../static/css/base/variables.css">
+    <link rel="stylesheet" href="../static/css/base/global.css">
+    <link rel="stylesheet" href="../static/css/main.css">
+    
+    <!-- Component CSS -->
+    <link rel="stylesheet" href="../static/css/components/header.css">
+    <link rel="stylesheet" href="../static/css/components/sidebar.css">
+    <link rel="stylesheet" href="../static/css/components/buttons.css">
+    <link rel="stylesheet" href="../static/css/components/forms.css">
+    
+    <!-- External Dependencies -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Page-specific CSS -->
+    {% block page_css %}{% endblock %}
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="../static/assets/icons/favicon.ico">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <!-- Header Navigation -->
+    <header class="header">
+        <nav class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-balance-scale"></i>
+                <span>LegalSimplifier</span>
+            </div>
+            <div class="nav-menu">
+                <a href="../templates/index.html" class="nav-link {% if page == 'home' %}active{% endif %}">Home</a>
+                <a href="../templates/pages/upload.html" class="nav-link {% if page == 'upload' %}active{% endif %}">Upload</a>
+                <a href="../templates/pages/chat.html" class="nav-link {% if page == 'chat' %}active{% endif %}">Chat</a>
+            </div>
+            <div class="nav-actions">
+                <button class="btn btn-outline" id="loginBtn">Login</button>
+                <button class="btn btn-primary" id="signupBtn">Get Started</button>
+            </div>
+            <!-- Mobile Menu Toggle -->
+            <button class="nav-toggle" id="navToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </nav>
+    </header>
+
+    <!-- Optional Sidebar -->
+    {% block sidebar %}{% endblock %}
+
+    <!-- Main Content Area -->
+    <main class="main-content" id="mainContent">
+        {% block content %}
+        <div class="container">
+            <h1>Welcome to Legal Document Simplifier</h1>
+            <p>This is the base template. Content should be overridden in child templates.</p>
+        </div>
+        {% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="brand-logo">
+                        <i class="fas fa-balance-scale"></i>
+                        <span>LegalSimplifier</span>
+                    </div>
+                    <p>Empowering legal professionals with AI-driven document analysis</p>
+                </div>
+                <div class="footer-links">
+                    <div class="link-group">
+                        <h4>Product</h4>
+                        <a href="../templates/pages/upload.html">Upload</a>
+                        <a href="../templates/pages/results.html">Results</a>
+                        <a href="../templates/pages/chat.html">Chat</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Company</h4>
+                        <a href="#about">About Us</a>
+                        <a href="#contact">Contact</a>
+                        <a href="#careers">Careers</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Resources</h4>
+                        <a href="#docs">Documentation</a>
+                        <a href="#api">API</a>
+                        <a href="#support">Support</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 LegalSimplifier. All rights reserved. | Powered by AI Intelligence</p>
+                <div class="footer-social">
+                    <a href="#" aria-label="Twitter"><i class="fab fa-twitter"></i></a>
+                    <a href="#" aria-label="LinkedIn"><i class="fab fa-linkedin"></i></a>
+                    <a href="#" aria-label="GitHub"><i class="fab fa-github"></i></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Processing...</p>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Base JavaScript Files -->
+    <script src="../static/js/utils/helpers.js"></script>
+    <script src="../static/js/utils/storage.js"></script>
+    <script src="../static/js/utils/validation.js"></script>
+    <script src="../static/js/api/client.js"></script>
+    <script src="../static/js/components/header.js"></script>
+    <script src="../static/js/router.js"></script>
+    <script src="../static/js/main.js"></script>
+    
+    <!-- Page-specific JavaScript -->
+    {% block page_js %}{% endblock %}
+    
+    <!-- Analytics and Tracking -->
+    {% block analytics %}{% endblock %}
+</body>
+</html>

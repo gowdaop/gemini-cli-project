@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass
-from collections import defaultdict
+from collections import defaultdict 
 import json
 
 from ..schemas.analysis import (
@@ -444,24 +444,26 @@ class RiskAggregator:
             return fallback_scores, fallback_summary
     
     async def _assess_clause_risk(self, clause: Clause) -> RiskScore:
-        """Assess risk for a single clause"""
+        """Assess risk for a single clause and fetch mitigation advice"""
         try:
-            # Calculate risk with RAG evidence
-            risk_score, risk_level, rationale = await self.risk_calculator.calculate_clause_risk(clause)
-            
-            # Retrieve evidence for the response
-            evidence = await self.risk_calculator._retrieve_clause_evidence(clause)
-            
-            return RiskScore(
-                clause_id=clause.id,
-                level=risk_level,
-                score=risk_score,
-                rationale=rationale,
-                supporting_context=evidence
+            # 1  core scoring --------------------------------------------------
+            risk_score, risk_level, rationale = (
+                await self.risk_calculator.calculate_clause_risk(clause)
             )
-            
-        except Exception as e:
-            logger.error(f"Individual clause risk assessment failed for {clause.id}: {e}")
+            evidence = await self.risk_calculator._retrieve_clause_evidence(clause)
+
+
+            # 3  build result --------------------------------------------------
+            return RiskScore(
+                clause_id          = clause.id,
+                level              = risk_level,
+                score              = risk_score,
+                rationale          = rationale,
+                supporting_context = evidence,  # ← new field
+            )
+
+        except Exception as err:
+            logger.error("Clause %s risk assessment failed: %s", clause.id, err)
             return await self._create_fallback_risk_score(clause)
     
     async def _create_fallback_risk_score(self, clause: Clause) -> RiskScore:

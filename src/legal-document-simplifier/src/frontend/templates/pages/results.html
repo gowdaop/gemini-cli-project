@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Analysis Results - Legal Document Simplifier</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="../../static/css/base/reset.css">
+    <link rel="stylesheet" href="../../static/css/base/variables.css">
+    <link rel="stylesheet" href="../../static/css/base/global.css">
+    <link rel="stylesheet" href="../../static/css/main.css">
+    <link rel="stylesheet" href="../../static/css/pages/results.css">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Header will be injected by HeaderComponent -->
+    
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="breadcrumb">
+                    <a href="../index.html" class="breadcrumb-item">
+                        <i class="fas fa-home"></i>
+                        Home
+                    </a>
+                    <span class="breadcrumb-separator">/</span>
+                    <a href="upload.html" class="breadcrumb-item">Upload</a>
+                    <span class="breadcrumb-separator">/</span>
+                    <span class="breadcrumb-item active">Analysis Results</span>
+                </div>
+                
+                <div class="results-header">
+                    <div class="document-info">
+                        <div class="document-icon">
+                            <i class="fas fa-file-contract"></i>
+                        </div>
+                        <div class="document-details">
+                            <!-- ✅ FIXED: Remove hardcoded values -->
+                            <h1 class="document-title" id="documentTitle">Loading...</h1>
+                            <div class="document-meta">
+                                <span class="meta-item">
+                                    <i class="fas fa-clock"></i>
+                                    Analyzed <span id="analysisTime">...</span>
+                                </span>
+                                <span class="meta-item">
+                                    <i class="fas fa-file-text"></i>
+                                    <span id="documentPages">Loading...</span>
+                                </span>
+                                <span class="meta-item">
+                                    <i class="fas fa-language"></i>
+                                    English
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="header-actions">
+                        <button class="btn btn-outline" id="shareBtn">
+                            <i class="fas fa-share-alt"></i>
+                            Share
+                        </button>
+                        <button class="btn btn-outline" id="exportBtn">
+                            <i class="fas fa-download"></i>
+                            Export
+                        </button>
+                        <button class="btn btn-primary" id="chatBtn">
+                            <i class="fas fa-comments"></i>
+                            Ask Questions
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Risk Overview Cards -->
+            <div class="overview-section">
+                <div class="overview-cards">
+                    <div class="overview-card risk-summary">
+                        <div class="card-icon" id="overallRiskIcon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="card-content">
+                            <h3>Overall Risk</h3>
+                            <!-- ✅ FIXED: Remove hardcoded values -->
+                            <div class="risk-level" id="overallRiskLevel">Loading...</div>
+                            <p class="risk-description" id="overallRiskDesc">Analyzing...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card">
+                        <div class="card-icon">
+                            <i class="fas fa-list-ul"></i>
+                        </div>
+                        <div class="card-content">
+                            <h3>Total Clauses</h3>
+                            <!-- ✅ FIXED: Remove hardcoded values -->
+                            <div class="card-number" id="totalClauses">0</div>
+                            <p class="card-subtitle">Identified & analyzed</p>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card high-risk">
+                        <div class="card-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="card-content">
+                            <h3>High Risk Items</h3>
+                            <!-- ✅ FIXED: Remove hardcoded values -->
+                            <div class="card-number" id="highRiskCount">0</div>
+                            <p class="card-subtitle">Need immediate attention</p>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card">
+                        <div class="card-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="card-content">
+                            <h3>Risk Score</h3>
+                            <!-- ✅ FIXED: Remove hardcoded values -->
+                            <div class="card-number" id="averageRiskScore">0.0/10</div>
+                            <p class="card-subtitle">Weighted average</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis Dashboard -->
+            <div class="dashboard-section">
+                <div class="dashboard-grid">
+                    <!-- Risk Distribution Chart -->
+                    <div class="dashboard-card risk-matrix-card">
+                        <div class="card-header">
+                            <h3>Risk Distribution</h3>
+                            <div class="card-actions">
+                                <button class="btn-icon" id="riskChartToggle" title="Chart Options">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="riskChart" width="400" height="300"></canvas>
+                            </div>
+                            <div class="risk-legend">
+                                <div class="legend-item">
+                                    <span class="legend-color red"></span>
+                                    <!-- ✅ FIXED: Remove hardcoded values -->
+                                    <span class="legend-label">High Risk (<span id="redCount">0</span>)</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color orange"></span>
+                                    <span class="legend-label">Medium-High (<span id="orangeCount">0</span>)</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color yellow"></span>
+                                    <span class="legend-label">Medium (<span id="yellowCount">0</span>)</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color green"></span>
+                                    <span class="legend-label">Low Risk (<span id="greenCount">0</span>)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Clause Types Chart -->
+                    <div class="dashboard-card clause-types-card">
+                        <div class="card-header">
+                            <h3>Clause Breakdown</h3>
+                            <div class="card-actions">
+                                <button class="btn-icon" id="clauseChartToggle" title="Chart Options">
+                                    <i class="fas fa-chart-bar"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="clauseChart" width="400" height="300"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Document Summary -->
+            <div class="summary-section">
+                <div class="summary-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-file-alt"></i> Executive Summary</h3>
+                        <div class="summary-actions">
+                            <button class="btn-small btn-outline" id="copySummary" title="Copy Summary">
+                                <i class="fas fa-copy"></i>
+                                Copy
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- ✅ FIXED: Remove hardcoded content -->
+                        <div class="summary-content" id="documentSummary">
+                            Loading document summary...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Analysis -->
+            <div class="analysis-section">
+                <div class="section-header">
+                    <h2>Detailed Clause Analysis</h2>
+                    <div class="section-filters">
+                        <select id="riskFilter" class="filter-select" aria-label="Filter by risk level">
+                            <option value="all">All Risk Levels</option>
+                            <option value="red">High Risk Only</option>
+                            <option value="orange">Medium-High Risk</option>
+                            <option value="yellow">Medium Risk</option>
+                            <option value="white">Low Risk</option>
+                        </select>
+                        <select id="typeFilter" class="filter-select" aria-label="Filter by clause type">
+                            <option value="all">All Clause Types</option>
+                            <option value="liability">Liability</option>
+                            <option value="indemnity">Indemnity</option>
+                            <option value="termination">Termination</option>
+                            <option value="payment">Payment</option>
+                            <option value="ip">Intellectual Property</option>
+                            <option value="confidentiality">Confidentiality</option>
+                            <option value="governing_law">Governing Law</option>
+                            <option value="arbitration">Arbitration</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="clauses-container" id="clausesContainer">
+                    <!-- ✅ FIXED: Add loading state -->
+                    <div class="clauses-loading">
+                        <div class="loading-icon">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </div>
+                        <p>Loading clause analysis...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommended Actions -->
+            <div class="actions-section">
+                <div class="actions-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-tasks"></i> Recommended Actions</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="action-items" id="actionItems">
+                            <!-- ✅ FIXED: Add loading state -->
+                            <div class="actions-loading">
+                                <div class="loading-icon">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                </div>
+                                <p>Generating recommendations...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Clause Detail Modal -->
+    <div id="clauseModal" class="modal hidden" role="dialog" aria-labelledby="modalClauseTitle" aria-hidden="true">
+        <div class="modal-backdrop" aria-label="Close modal" role="button" tabindex="0"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalClauseTitle">Clause Details</h3>
+                <button class="modal-close" id="closeModal" aria-label="Close modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Dynamic content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading analysis results...</p>
+        </div>
+    </div>
+
+    <!-- Toast Container for notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="brand-logo">
+                        <i class="fas fa-balance-scale"></i>
+                        <span>LegalSimplifier</span>
+                    </div>
+                    <p>Empowering legal professionals with AI-driven document analysis</p>
+                </div>
+                <div class="footer-links">
+                    <div class="link-group">
+                        <h4>Product</h4>
+                        <a href="#features">Features</a>
+                        <a href="#dashboard">Dashboard</a>
+                        <a href="#pricing">Pricing</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Company</h4>
+                        <a href="#about">About Us</a>
+                        <a href="#contact">Contact</a>
+                        <a href="#careers">Careers</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Resources</h4>
+                        <a href="#docs">Documentation</a>
+                        <a href="#api">API</a>
+                        <a href="#support">Support</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 LegalSimplifier. All rights reserved. | Powered by AI Intelligence</p>
+                <div class="footer-social">
+                    <a href="#" aria-label="Twitter"><i class="fab fa-twitter"></i></a>
+                    <a href="#" aria-label="LinkedIn"><i class="fab fa-linkedin"></i></a>
+                    <a href="#" aria-label="GitHub"><i class="fab fa-github"></i></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript - Load in correct order -->
+    <script src="../../static/js/utils/helpers.js"></script>
+    <script src="../../static/js/components/header.js"></script>
+    <script type="module" src="../../static/js/api/client.js"></script>
+    <script src="../../static/js/pages/results.js"></script>
+    <script src="../../static/js/main.js"></script>
+</body>
+</html>

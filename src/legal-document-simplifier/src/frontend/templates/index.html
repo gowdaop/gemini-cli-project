@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Document Simplifier - AI-Powered Contract Analysis</title>
+    <link rel="stylesheet" href="../static/css/base/reset.css">
+    <link rel="stylesheet" href="../static/css/base/variables.css">
+    <link rel="stylesheet" href="../static/css/base/global.css">
+    <link rel="stylesheet" href="../static/css/main.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Header Component -->
+    <div id="header-component"></div>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-background">
+            <div class="gradient-overlay"></div>
+        </div>
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-text">
+                    <h1 class="hero-title">
+                        Simplify Legal Documents with 
+                        <span class="gradient-text">AI Intelligence</span>
+                    </h1>
+                    <p class="hero-description">
+                        Transform complex contracts and legal documents into clear, actionable insights. 
+                        Our AI-powered platform extracts clauses, identifies risks, and provides instant answers 
+                        to your legal questions.
+                    </p>
+                    <div class="hero-actions">
+                        <button class="btn btn-primary btn-large" onclick="scrollToSection('dashboard')">
+                            <i class="fas fa-upload"></i>
+                            Start Analyzing
+                        </button>
+                        <button class="btn btn-ghost btn-large">
+                            <i class="fas fa-play"></i>
+                            Watch Demo
+                        </button>
+                    </div>
+                </div>
+                <div class="hero-visual">
+                    <div class="hero-card">
+                        <div class="card-header">
+                            <div class="card-dots">
+                                <span class="dot red"></span>
+                                <span class="dot yellow"></span>
+                                <span class="dot green"></span>
+                            </div>
+                            <span class="card-title">Contract Analysis</span>
+                        </div>
+                        <div class="card-content">
+                            <div class="analysis-item">
+                                <span class="risk-badge high">High Risk</span>
+                                <span class="clause-text">Termination clause without notice period</span>
+                            </div>
+                            <div class="analysis-item">
+                                <span class="risk-badge medium">Medium Risk</span>
+                                <span class="clause-text">Liability limitations may be unclear</span>
+                            </div>
+                            <div class="analysis-item">
+                                <span class="risk-badge low">Low Risk</span>
+                                <span class="clause-text">Standard payment terms specified</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>Powerful Features</h2>
+                <p>Everything you need to understand and analyze legal documents</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-eye"></i>
+                    </div>
+                    <h3>OCR Technology</h3>
+                    <p>Extract text from PDFs, images, and scanned documents with Google Document AI precision</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <h3>Clause Extraction</h3>
+                    <p>Automatically identify and categorize key clauses, terms, and conditions in your documents</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h3>Risk Assessment</h3>
+                    <p>AI-powered risk scoring helps you identify potential issues before they become problems</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <h3>AI Chat Assistant</h3>
+                    <p>Ask questions about your documents and get instant, intelligent responses powered by Gemini</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-table"></i>
+                    </div>
+                    <h3>Interactive Results</h3>
+                    <p>Explore findings in a comprehensive table with PDF highlighting and visual risk indicators</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h3>Secure Processing</h3>
+                    <p>Enterprise-grade security ensures your sensitive documents remain private and protected</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Dashboard Section -->
+    <section id="dashboard" class="dashboard">
+        <div class="container">
+            <div class="section-header">
+                <h2>Choose Your Action</h2>
+                <p>Select what you'd like to do with your legal documents</p>
+            </div>
+            <div class="dashboard-grid">
+                <div class="dashboard-card" onclick="navigateToPage('upload')">
+                    <div class="card-icon">
+                        <i class="fas fa-upload"></i>
+                    </div>
+                    <h3>Upload & Analyze</h3>
+                    <p>Upload your legal documents for comprehensive AI analysis and risk assessment</p>
+                    <div class="card-features">
+                        <span class="feature-tag">OCR Processing</span>
+                        <span class="feature-tag">Risk Scoring</span>
+                        <span class="feature-tag">Clause Extraction</span>
+                    </div>
+                    <button class="card-button">
+                        Start Upload
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+                
+                <div class="dashboard-card" onclick="navigateToPage('results')">
+                    <div class="card-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3>View Results</h3>
+                    <p>Browse and explore your previously analyzed documents with interactive insights</p>
+                    <div class="card-features">
+                        <span class="feature-tag">Interactive Table</span>
+                        <span class="feature-tag">PDF Viewer</span>
+                        <span class="feature-tag">Risk Heatmap</span>
+                    </div>
+                    <button class="card-button">
+                        View Results
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+                
+                <div class="dashboard-card" onclick="navigateToPage('chat')">
+                    <div class="card-icon">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h3>AI Assistant</h3>
+                    <p>Chat with our AI to get instant answers and insights about your legal documents</p>
+                    <div class="card-features">
+                        <span class="feature-tag">Real-time Chat</span>
+                        <span class="feature-tag">Context Aware</span>
+                        <span class="feature-tag">Streaming</span>
+                    </div>
+                    <button class="card-button">
+                        Start Chat
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="brand-logo">
+                        <i class="fas fa-balance-scale"></i>
+                        <span>LegalSimplifier</span>
+                    </div>
+                    <p>Empowering legal professionals with AI-driven document analysis</p>
+                </div>
+                <div class="footer-links">
+                    <div class="link-group">
+                        <h4>Product</h4>
+                        <a href="#features">Features</a>
+                        <a href="#dashboard">Dashboard</a>
+                        <a href="#pricing">Pricing</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Company</h4>
+                        <a href="#about">About Us</a>
+                        <a href="#contact">Contact</a>
+                        <a href="#careers">Careers</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Resources</h4>
+                        <a href="#docs">Documentation</a>
+                        <a href="#api">API</a>
+                        <a href="#support">Support</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 LegalSimplifier. All rights reserved. | Powered by AI Intelligence</p>
+                <div class="footer-social">
+                    <a href="#"><i class="fab fa-twitter"></i></a>
+                    <a href="#"><i class="fab fa-linkedin"></i></a>
+                    <a href="#"><i class="fab fa-github"></i></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="../static/js/utils/helpers.js"></script>
+    <script src="../static/js/components/header.js"></script>
+    <script src="../static/js/router.js"></script>
+    <script src="../static/js/main.js"></script>
+</body>
+</html>

@@ -59,6 +59,7 @@ class RiskScore(BaseModel):
     score: float = Field(..., ge=0.0, le=1.0, description="Numerical risk score")
     rationale: str = Field(..., description="Explanation of the risk assessment")
     supporting_context: List[RAGContextItem] = Field(default_factory=list, description="Evidence from legal database")
+    recommendations: List[str] = []
 
 # Request/Response Models
 class AnalyzeRequest(BaseModel):

@@ -232,6 +232,7 @@ services:
       - MILVUS_URL=milvus:19530
     networks:
       - legal_network
+
   ########################################################
   # 8. Nginx (Optional - Load Balancer/Reverse Proxy)
   ########################################################
@@ -249,6 +250,64 @@ services:
       - legal_network
     profiles:
       - production
+
+  ########################################################
+  # 9. Frontend Services (MOVED UNDER services: section)
+  ########################################################
+  
+  # Development Frontend (Hot reload with live-server)
+  frontend-dev:
+    image: node:18-alpine
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src/legal-document-simplifier/src/frontend:/app:rw
+    working_dir: /app
+    command: >
+      sh -c "
+      echo '🚀 Starting LEGAL-SIMPLIFIER Development Frontend...' &&
+      if [ ! -f package.json ]; then
+        echo '📦 Initializing Node.js project...' &&
+        npm init -y &&
+        npm install --save-dev live-server &&
+        echo '✅ Dependencies installed'
+      fi &&
+      echo '🌐 Starting live server on port 3000...' &&
+      npx live-server --port=3000 --host=0.0.0.0 --no-browser --watch=/app
+      "
+    networks:
+      - legal_network
+    profiles:
+      - dev
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Production Frontend (Nginx optimized)
+  frontend-prod:
+    image: nginx:alpine
+    ports:
+      - "3000:80"
+    volumes:
+      - ./src/legal-document-simplifier/src/frontend:/usr/share/nginx/html:ro
+      - ./config/frontend-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - legal-simplifier
+    networks:
+      - legal_network
+    environment:
+      - BACKEND_URL=http://legal-simplifier:8000
+    profiles:
+      - prod
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 volumes:
   postgres_data:

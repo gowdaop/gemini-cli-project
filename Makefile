@@ -62,3 +62,5 @@ docker compose up -d
 docker compose --profile dev up frontend-dev
 
 legal-doc-analyzer-2025-secure-key-f47d4a2c
+
+docker compose logs -f frontend-dev  

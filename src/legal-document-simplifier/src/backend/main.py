@@ -9,6 +9,7 @@ from typing import Optional
 import time
 import logging
 import uvicorn
+from vertexai import init as vertex_init
 
 from .config import settings
 from .routers import upload, analyze, chat
@@ -60,7 +61,6 @@ async def lifespan(app: FastAPI):
         logger.warning("GCP_PROJECT_ID not set - Document AI may not work")
     if not settings.DOCAI_PROCESSOR_ID:
         logger.warning("DOCAI_PROCESSOR_ID not set - OCR will use fallback")
-    
     yield
     
     # Shutdown

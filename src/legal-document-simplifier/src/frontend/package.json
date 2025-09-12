@@ -1,0 +1,18 @@
+{
+  "name": "legal-simplifier-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for LEGAL-SIMPLIFIER application",
+  "main": "static/js/main.js",
+  "scripts": {
+    "dev": "live-server --port=3000 --host=0.0.0.0 --no-browser --watch=.",
+    "build": "echo 'Static files ready for production'",
+    "test": "echo 'Frontend tests would run here'",
+    "lint": "echo 'Linting would run here'"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  },
+  "keywords": ["legal", "document", "analysis", "ai"],
+  "author": "Legal Simplifier Team",
+  "license": "MIT"
+}
