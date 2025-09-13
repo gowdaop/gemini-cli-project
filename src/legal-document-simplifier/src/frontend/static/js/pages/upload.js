@@ -39,6 +39,7 @@ class UploadPage {
         try {
             this.initializeElements();
             this.setupEventListeners();
+            this.renderRecentUploads(); // <-- ADDED
             console.log('✅ UploadPage initialized successfully');
         } catch (error) {
             console.error('❌ UploadPage initialization failed:', error);
@@ -73,6 +74,8 @@ class UploadPage {
         // Messages
         this.successMessage = DOM.id('successMessage');
         this.errorMessage = DOM.id('errorMessage');
+
+        this.recentList = DOM.id('recentList'); // <-- ADDED
         
         console.log('✅ DOM elements initialized');
     }
@@ -157,6 +160,9 @@ class UploadPage {
             });
 
             localStorage.setItem('latest_analysis', JSON.stringify(completeResults));
+            this.saveToHistory(completeResults);
+            this.renderRecentUploads();
+
             this.updateProgress(100);
             this.setActiveStep('analyze', true);
             this.showSuccessState(analysisResponse);
@@ -166,6 +172,79 @@ class UploadPage {
             console.error('❌ Processing failed:', error);
             this.showErrorState(error.message || 'An unexpected error occurred during processing');
         }
+    }
+
+    saveToHistory(newResult) {
+        let history = [];
+        try {
+            const storedHistory = localStorage.getItem('analysis_history');
+            if (storedHistory) {
+                history = JSON.parse(storedHistory);
+            }
+        } catch (e) {
+            console.error("Failed to parse analysis history", e);
+            history = [];
+        }
+
+        // Add new result to the top
+        history.unshift(newResult);
+
+        // Keep only the last 5
+        history = history.slice(0, 5);
+
+        localStorage.setItem('analysis_history', JSON.stringify(history));
+    }
+
+    renderRecentUploads() {
+        if (!this.recentList) return;
+
+        let history = [];
+        try {
+            const storedHistory = localStorage.getItem('analysis_history');
+            if (storedHistory) {
+                history = JSON.parse(storedHistory);
+            }
+        } catch (e) {
+            console.error("Failed to parse analysis history", e);
+            history = [];
+        }
+
+        if (history.length === 0) {
+            this.recentList.innerHTML = `
+                <div class="no-recent-message" style="text-align: center; padding: 2rem; color: #64748b;">
+                    <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+                    <p>No recent documents yet. Upload your first document to get started!</p>
+                </div>
+            `;
+            return;
+        }
+
+        this.recentList.innerHTML = ''; // Clear existing
+        history.forEach(item => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'recent-item';
+            itemEl.innerHTML = `
+                <div class="recent-icon"><i class="fas fa-file-alt"></i></div>
+                <div class="recent-details">
+                    <div class="recent-filename">${item.filename}</div>
+                    <div class="recent-timestamp">${new Date(item.timestamp).toLocaleString()}</div>
+                </div>
+                <button class="btn btn-sm btn-outline view-results-btn" data-filename="${item.filename}">View</button>
+            `;
+            this.recentList.appendChild(itemEl);
+        });
+
+        // Add event listeners for the new buttons
+        this.recentList.querySelectorAll('.view-results-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const filename = e.currentTarget.dataset.filename;
+                const historyItem = history.find(item => item.filename === filename);
+                if (historyItem) {
+                    localStorage.setItem('latest_analysis', JSON.stringify(historyItem));
+                    window.location.href = 'results.html';
+                }
+            });
+        });
     }
 
     validateFile(file) {

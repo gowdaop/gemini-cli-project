@@ -200,9 +200,9 @@ class LegalSimplifier {
     console.log('Initializing chat page...');
   }
 
-  handleNavigation(e) {
+    handleNavigation(e) {
     e.preventDefault();
-    const href = e.target.getAttribute('href');
+    const href = e.currentTarget.getAttribute('href');
     if (href && href !== '#') {
       window.location.href = href;
     }

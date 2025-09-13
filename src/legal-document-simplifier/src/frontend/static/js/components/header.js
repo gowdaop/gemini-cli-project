@@ -41,6 +41,11 @@ class HeaderComponent {
   }
 
   getHeaderHTML() {
+    const onSubPage = this.currentPage !== 'home';
+    const homePath = onSubPage ? '../index.html' : './index.html';
+    const uploadPath = onSubPage ? './upload.html' : './pages/upload.html';
+    const chatPath = onSubPage ? './chat.html' : './pages/chat.html';
+
     return `
       <header class="header">
         <nav class="nav-container">
@@ -49,10 +54,9 @@ class HeaderComponent {
             <span>LegalSimplifier</span>
           </div>
           <div class="nav-menu">
-            <a href="../index.html" class="nav-link" data-page="home">Home</a>
-            <a href="../templates/pages/upload.html" class="nav-link" data-page="upload">Upload</a>
-            <a href="../templates/pages/results.html" class="nav-link" data-page="results">Results</a>
-            <a href="../templates/pages/chat.html" class="nav-link" data-page="chat">Chat</a>
+            <a href="${homePath}" class="nav-link" data-page="home">Home</a>
+            <a href="${uploadPath}" class="nav-link" data-page="upload">Upload</a>
+            <a href="${chatPath}" class.nav-link" data-page="chat">Chat</a>
           </div>
           <div class="nav-actions">
             <button class="btn btn-outline" id="loginBtn">Login</button>

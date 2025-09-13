@@ -27,6 +27,7 @@ class ChatPage {
             this.initializeElements();
             this.setupEventListeners();
             this.loadInitialContext();
+            this.renderRecentConversations(); // <-- ADDED
             
             // ✅ Performance: Simplified textarea resize
             this.setupTextareaResize();
@@ -172,6 +173,8 @@ class ChatPage {
             // Remove typing indicator and add response
             this.hideTypingIndicator();
             this.addMessage('bot', response.answer, response.evidence);
+
+            this.saveConversation();
             
         } catch (error) {
             console.error('Send message error:', error);
@@ -235,7 +238,7 @@ class ChatPage {
     showTypingIndicator() {
         const typingEl = document.createElement('div');
         typingEl.classList.add('message', 'bot', 'typing-indicator');
-        typingEl.innerHTML = `
+        typingEl.innerHTML = '
             <div class="message-content">
                 <div class="typing-dots">
                     <span></span>
@@ -243,7 +246,7 @@ class ChatPage {
                     <span></span>
                 </div>
             </div>
-        `;
+        ';
         typingEl.id = 'typingIndicator';
         this.chatMessages?.appendChild(typingEl);
         this.scrollToBottom();
@@ -291,7 +294,7 @@ class ChatPage {
         this.messages = [];
         
         if (this.chatMessages) {
-            this.chatMessages.innerHTML = `
+            this.chatMessages.innerHTML = '
                 <div class="welcome-message">
                     <div class="welcome-icon">
                         <i class="fas fa-balance-scale"></i>
@@ -313,7 +316,7 @@ class ChatPage {
                         </button>
                     </div>
                 </div>
-            `;
+            ';
         }
     }
 
@@ -355,31 +358,136 @@ class ChatPage {
     updateDocumentContextUI() {
         if (!this.documentContext || !this.documentContextContainer) return;
         
-        this.documentContextContainer.innerHTML = `
+        this.documentContextContainer.innerHTML = '
             <div class="document-info">
                 <div class="document-icon">
                     <i class="fas fa-file-contract"></i>
                 </div>
                 <div class="document-details">
-                    <h4>${this.documentContext.filename}</h4>
+                    <h4>' + this.documentContext.filename + '</h4>
                     <p>Document loaded and ready for context-aware responses</p>
                 </div>
             </div>
-        `;
+        ';
     }
 
     showAddContextUI(message = "Ask general legal questions, or add a document for context-aware chat.") {
         if (!this.documentContextContainer) return;
-        this.documentContextContainer.innerHTML = `
+        this.documentContextContainer.innerHTML = '
             <div class="add-context">
-                <p>${message}</p>
+                <p>' + message + '</p>
                 <button class="btn btn-secondary" id="addContextBtn">Add Document</button>
             </div>
-        `;
+        ';
         const addContextBtn = DOM.id('addContextBtn');
         if (addContextBtn) {
             addContextBtn.addEventListener('click', () => {
                 window.location.href = 'upload.html';
+            });
+        }
+    }
+
+    saveConversation() {
+        if (!this.conversationId || this.messages.length === 0) return;
+
+        let history = [];
+        try {
+            const storedHistory = localStorage.getItem('chat_history');
+            if (storedHistory) {
+                history = JSON.parse(storedHistory);
+            }
+        } catch (e) {
+            console.error("Failed to parse chat history", e);
+            history = [];
+        }
+
+        const conversation = {
+            id: this.conversationId,
+            messages: this.messages,
+            timestamp: Date.now(),
+            title: this.messages[0].text.substring(0, 30) + "..."
+        };
+
+        // Check if conversation already exists and update it
+        const existingIndex = history.findIndex(c => c.id === this.conversationId);
+        if (existingIndex > -1) {
+            history[existingIndex] = conversation;
+        } else {
+            history.unshift(conversation);
+        }
+
+        // Keep only the last 5
+        history = history.slice(0, 5);
+
+        localStorage.setItem('chat_history', JSON.stringify(history));
+        this.renderRecentConversations();
+    }
+
+    renderRecentConversations() {
+        if (!this.conversationList) return;
+
+        let history = [];
+        try {
+            const storedHistory = localStorage.getItem('chat_history');
+            if (storedHistory) {
+                history = JSON.parse(storedHistory);
+            }
+        } catch (e) {
+            console.error("Failed to parse chat history", e);
+            history = [];
+        }
+
+        if (history.length === 0) {
+            this.conversationList.innerHTML = '
+                <div class="no-conversations">
+                    <i class="fas fa-comment-slash"></i>
+                    <p>No conversations yet</p>
+                </div>
+            ';
+            return;
+        }
+
+        this.conversationList.innerHTML = ''; // Clear existing
+        history.forEach(conv => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'conversation-item';
+            itemEl.dataset.conversationId = conv.id;
+            itemEl.innerHTML = '
+                <div class="conversation-title">' + conv.title + '</div>
+                <div class="conversation-timestamp">' + new Date(conv.timestamp).toLocaleString() + '</div>
+            ';
+            this.conversationList.appendChild(itemEl);
+        });
+
+        // Add event listeners for the new items
+        this.conversationList.querySelectorAll('.conversation-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                const conversationId = e.currentTarget.dataset.conversationId;
+                this.loadConversation(conversationId);
+            });
+        });
+    }
+
+    loadConversation(conversationId) {
+        let history = [];
+        try {
+            const storedHistory = localStorage.getItem('chat_history');
+            if (storedHistory) {
+                history = JSON.parse(storedHistory);
+            }
+        } catch (e) {
+            console.error("Failed to parse chat history", e);
+            return;
+        }
+
+        const conversation = history.find(c => c.id === conversationId);
+        if (conversation) {
+            this.conversationId = conversation.id;
+            this.messages = conversation.messages;
+            
+            this.chatMessages.innerHTML = ''; // Clear chat window
+            this.messages.forEach(msg => {
+                this.addMessage(msg.sender, msg.text);
             });
         }
     }
@@ -395,11 +503,11 @@ class ChatPage {
         console.error('Chat error:', message);
         // Simple error display
         const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = `
+        errorDiv.style.cssText = '
             position: fixed; top: 100px; left: 50%; transform: translateX(-50%);
             background: #fee; border: 1px solid #fcc; color: #c33;
             padding: 1rem; border-radius: 6px; z-index: 1000;
-        `;
+        ';
         errorDiv.textContent = message;
         document.body.appendChild(errorDiv);
         

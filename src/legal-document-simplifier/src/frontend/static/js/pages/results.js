@@ -302,6 +302,20 @@ showRecommendations() {
     };
     riskFilter?.addEventListener('change', applyFilter);
     typeFilter?.addEventListener('change', applyFilter);
+
+    // chat button
+    const chatBtn = DOM.id('chatBtn');
+    if (chatBtn) {
+      chatBtn.addEventListener('click', () => {
+        if (this.analysisData && this.analysisData.filename) {
+          // Pass the filename to the chat page
+          window.location.href = `chat.html?filename=${encodeURIComponent(this.analysisData.filename)}`;
+        } else {
+          // Fallback for safety
+          window.location.href = 'chat.html';
+        }
+      });
+    }
   }
 
   /* ---------- 8.  ERROR UI ---------- */
