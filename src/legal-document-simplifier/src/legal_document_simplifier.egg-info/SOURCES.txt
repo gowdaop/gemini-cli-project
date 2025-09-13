@@ -15,10 +15,8 @@ src/backend/services/embedding.py
 src/backend/services/ocr.py
 src/backend/services/rag.py
 src/backend/services/risk.py
-src/backend/tests/test_embedding.py
-src/backend/tests/test_embedding_mocks.py
-src/backend/tests/test_embedding_performance.py
-src/backend/tests/test_remote_api.py
+src/backend/tests/__init__.py
+src/backend/tests/test_embedding_complete.py
 src/frontend/app.py
 src/frontend/components/risk_table.py
 src/frontend/pages/01_Upload.py
