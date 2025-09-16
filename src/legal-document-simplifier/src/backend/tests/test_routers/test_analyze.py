@@ -11,11 +11,11 @@ client = TestClient(app)
 
 class TestAnalyzeRouter:
     
-    def test_analyze_document_success(self, mock_api_key, sample_ocr_text):
+    def test_analyze_document_success(self, mock_api_key, sample_ocr_text, client):
         """Test successful document analysis"""
-        with patch('src.backend.services.clause.classify_clauses') as mock_classify, \
-             patch('src.backend.routers.analyze.score_risks') as mock_risk, \
-             patch('src.backend.services.rag.summarize_200w') as mock_summary:
+        with patch('src.backend.routers.analyze.classify_clauses') as mock_classify, \
+             patch('src.backend.routers.analyze.score_risks_parallel') as mock_risk, \
+             patch('src.backend.routers.analyze.generate_summary') as mock_summary:
             
             # Mock service responses
             mock_classify.return_value = [
@@ -48,8 +48,7 @@ class TestAnalyzeRouter:
             }
             
             headers = {
-                "x-api-key": mock_api_key,
-                "Host": "testserver"
+                "x-api-key": mock_api_key
             }
             
             response = client.post("/analyze/", json=payload, headers=headers)
@@ -59,7 +58,7 @@ class TestAnalyzeRouter:
             assert "risks" in data
             assert "summary_200w" in data
 
-    def test_analyze_document_no_auth(self, sample_ocr_text):
+    def test_analyze_document_no_auth(self, sample_ocr_text, client):
         """Test analyze without authentication"""
         # 🔧 FIX: Temporarily clear dependency override for this test
         from src.backend.main import require_api_key
@@ -80,7 +79,7 @@ class TestAnalyzeRouter:
                 "top_k": 5
             }
             
-            headers = {"Host": "testserver"}  # No x-api-key header
+            headers = {}
             response = client.post("/analyze/", json=payload, headers=headers)
             assert response.status_code == 401
             
@@ -89,7 +88,7 @@ class TestAnalyzeRouter:
             if original_override:
                 app.dependency_overrides[require_api_key] = original_override
 
-    def test_analyze_invalid_payload(self, mock_api_key):
+    def test_analyze_invalid_payload(self, mock_api_key, client):
         """Test analyze with invalid payload"""
         payload = {"invalid": "data"}
         
@@ -101,9 +100,9 @@ class TestAnalyzeRouter:
         response = client.post("/analyze/", json=payload, headers=headers)
         assert response.status_code == 422  # Validation error
 
-    def test_analyze_service_error(self, mock_api_key, sample_ocr_text):
+    def test_analyze_service_error(self, mock_api_key, sample_ocr_text, client):
         """Test analyze with service error"""
-        with patch('src.backend.services.clause.classify_clauses') as mock_classify:
+        with patch('src.backend.routers.analyze.classify_clauses') as mock_classify:
             mock_classify.side_effect = Exception("Service error")
             
             payload = {
@@ -115,18 +114,17 @@ class TestAnalyzeRouter:
             }
             
             headers = {
-                "x-api-key": mock_api_key,
-                "Host": "testserver"
+                "x-api-key": mock_api_key
             }
             
             response = client.post("/analyze/", json=payload, headers=headers)
             assert response.status_code == 500
 
-    def test_analyze_health(self):
+    def test_analyze_health(self, client):
         """Test analyze health endpoint"""
-        headers = {"Host": "testserver"}
-        response = client.get("/analyze/health", headers=headers)
+        response = client.get("/analyze/health")
         assert response.status_code == 200
         data = response.json()
         assert "status" in data
         assert data["status"] == "healthy"
+

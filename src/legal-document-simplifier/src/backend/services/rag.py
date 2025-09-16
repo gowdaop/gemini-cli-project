@@ -12,7 +12,7 @@ import uuid
 from functools import lru_cache
 from collections import OrderedDict
 
-# ✅ FIXED: Simplified PyMilvus imports only
+# PyMilvus imports
 try:
     from pymilvus import connections, Collection, utility, DataType
     from pymilvus import MilvusException
@@ -21,11 +21,27 @@ except ImportError:
     PYMILVUS_AVAILABLE = False
     MilvusException = Exception
 
+# Google Custom Search imports (legacy - keep for compatibility)
+try:
+    from googleapiclient.discovery import build
+    GOOGLE_SEARCH_AVAILABLE = True
+except ImportError:
+    GOOGLE_SEARCH_AVAILABLE = False
+
+# Vertex AI Search imports (new)
+try:
+    from google.cloud import discoveryengine_v1beta as discoveryengine
+    VERTEX_SEARCH_AVAILABLE = True
+except ImportError:
+    VERTEX_SEARCH_AVAILABLE = False
+    discoveryengine = None
+
 from ..schemas.analysis import RAGContextItem
 from ..config import settings
 from .embedding import embed_texts_async
 
 logger = logging.getLogger(__name__)
+
 
 
 class RAGCache:
@@ -70,6 +86,137 @@ class RAGCache:
         async with self._lock:
             self.cache.clear()
             self.timestamps.clear()
+
+
+class VertexAISearchService:
+    """Vertex AI Search service for Indian legal content"""
+    
+    def __init__(self):
+        self.project_id = "legal-470717"  # Your project ID
+        self.location = "global"
+        self.engine_id = "legal-document-search_1757848376569"  # Your engine ID
+        self.client = None
+        self.initialized = False
+        self._search_cache = RAGCache(max_size=200, ttl=3600)
+        
+    async def initialize(self):
+        """Initialize Vertex AI Search service"""
+        if self.initialized:
+            return
+            
+        if not VERTEX_SEARCH_AVAILABLE:
+            logger.warning("Vertex AI Search not available - web search disabled")
+            return
+            
+        try:
+            self.client = discoveryengine.SearchServiceClient()
+            self.initialized = True
+            logger.info("✅ Vertex AI Search service initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Vertex AI Search: {e}")
+    
+    async def search_web(self, query: str, num_results: int = 5) -> List[Dict[str, Any]]:
+        """Search using Vertex AI Search for Indian legal content"""
+        if not self.initialized:
+            await self.initialize()
+            
+        if not self.initialized:
+            logger.warning("Vertex AI Search not available - returning empty results")
+            return []
+            
+        # Check cache first
+        cache_key = hashlib.md5(f"vertex_web_{query}_{num_results}".encode()).hexdigest()
+        cached_result = await self._search_cache.get(cache_key)
+        if cached_result:
+            logger.debug("Returning cached Vertex AI search results")
+            return cached_result
+            
+        try:
+            logger.info(f"🔍 Vertex AI Search for: '{query[:50]}...'")
+            
+            serving_config = (
+                f"projects/{self.project_id}/locations/{self.location}/"
+                f"collections/default_collection/engines/{self.engine_id}/servingConfigs/default_search"
+            )
+            
+            request = discoveryengine.SearchRequest(
+                serving_config=serving_config,
+                query=query,
+                page_size=min(num_results, 10),
+                content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
+                    snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                        return_snippet=True
+                    )
+                )
+            )
+            
+            # Execute search
+            response = await asyncio.get_event_loop().run_in_executor(
+                None, 
+                lambda: self.client.search(request)
+            )
+            
+            search_results = []
+            for result in response.results:
+                try:
+                    document = result.document
+                    
+                    # Extract title and content
+                    title = document.derived_struct_data.get('title', '') if document.derived_struct_data else ''
+                    link = document.derived_struct_data.get('link', '') if document.derived_struct_data else ''
+                    
+                    # Get snippet from search result
+                    snippet = ""
+                    if hasattr(result, 'document') and hasattr(result.document, 'derived_struct_data'):
+                        snippets = result.document.derived_struct_data.get('snippets', [])
+                        if snippets:
+                            snippet = snippets[0].get('snippet', '')
+                    
+                    search_results.append({
+                        'title': title,
+                        'link': link,
+                        'snippet': snippet,
+                        'displayLink': link.split('/')[2] if '//' in link else link,
+                        'source': 'vertex_ai_search'
+                    })
+                    
+                except Exception as e:
+                    logger.warning(f"Error processing Vertex AI result: {e}")
+                    continue
+            
+            # Cache results
+            await self._search_cache.set(cache_key, search_results)
+            
+            logger.info(f"✅ Vertex AI Search returned {len(search_results)} results")
+            return search_results
+            
+        except Exception as e:
+            logger.error(f"❌ Vertex AI Search failed: {e}")
+            return []
+    
+    def convert_to_rag_context(self, web_results: List[Dict[str, Any]]) -> List[RAGContextItem]:
+        """Convert Vertex AI search results to RAG context items"""
+        rag_contexts = []
+        
+        for i, result in enumerate(web_results):
+            try:
+                # Create content from title and snippet
+                content = f"{result.get('title', '')}. {result.get('snippet', '')}"
+                
+                rag_contexts.append(RAGContextItem(
+                    chunk_id=f"vertex_{i}",
+                    content=content[:2000],  # Limit content length
+                    doc_type="vertex_ai_search_result",
+                    jurisdiction="indian_law",
+                    date=datetime.now().isoformat()[:10],
+                    source_url=result.get('link', ''),
+                    similarity=0.85  # High similarity for Vertex AI results
+                ))
+            except Exception as e:
+                logger.warning(f"❌ Error converting Vertex AI result {i}: {e}")
+                continue
+        
+        return rag_contexts
 
 
 class MilvusClient:
@@ -122,7 +269,6 @@ class MilvusClient:
     async def _log_collection_info(self):
         """Log collection statistics"""
         try:
-            # ✅ FIX: Properly call the method
             stats = await asyncio.get_event_loop().run_in_executor(
                 None, 
                 lambda: self.collection.num_entities()
@@ -253,7 +399,6 @@ class VertexAIClient:
             return cached_result
         
         try:
-            # Use the model name from environment variable
             model = getattr(settings, 'VERTEX_MODEL', 'gemini-2.0-flash')
             url = f"{self.base_url}/models/{model}:generateContent"
             
@@ -262,7 +407,6 @@ class VertexAIClient:
                 'X-Goog-Api-Key': self.api_key
             }
             
-            # Build request payload matching Google Studio format
             payload = {
                 "contents": [
                     {
@@ -283,7 +427,6 @@ class VertexAIClient:
             
             logger.info(f"🤖 Calling Vertex AI HTTP API: {model}")
             
-            # Make HTTP request
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: requests.post(url, headers=headers, json=payload, timeout=30)
@@ -292,7 +435,6 @@ class VertexAIClient:
             if response.status_code == 200:
                 result = response.json()
                 
-                # Extract text from response
                 if 'candidates' in result and len(result['candidates']) > 0:
                     candidate = result['candidates'][0]
                     if 'content' in candidate and 'parts' in candidate['content']:
@@ -343,12 +485,13 @@ class VertexAIClient:
                    "❓ **Need More Details?**: Feel free to ask specific questions about any clause.")
 
 
-class RAGService:
-    """Comprehensive RAG service combining Milvus, embeddings, and Vertex AI"""
+class EnhancedRAGService:
+    """Comprehensive RAG service with web search fallback"""
     
     def __init__(self):
         self.milvus_client = MilvusClient()
         self.vertex_client = VertexAIClient()
+        self.web_search_service = VertexAISearchService()
         self.initialized = False
     
     async def initialize(self):
@@ -356,26 +499,58 @@ class RAGService:
         if self.initialized:
             return
         
-        logger.info("Initializing RAG service...")
+        logger.info("Initializing Enhanced RAG service...")
         
         await asyncio.gather(
             self.milvus_client.initialize(),
             self.vertex_client.initialize(),
+            self.web_search_service.initialize(),
             return_exceptions=True
         )
         
         self.initialized = True
-        logger.info("RAG service initialization complete")
+        logger.info("Enhanced RAG service initialization complete")
     
-    async def retrieve_contexts(self, query: str, top_k: int = 8) -> List[RAGContextItem]:
-        """Retrieve relevant contexts from Milvus"""
+    async def retrieve_contexts(self, query: str, top_k: int = 8, use_web_fallback: bool = True) -> List[RAGContextItem]:
+        """Retrieve relevant contexts from Milvus with web search fallback"""
         if not self.initialized:
             await self.initialize()
         
-        logger.info(f"🔍 Generating embeddings for query: '{query[:50]}...'")
+        logger.info(f"🔍 Retrieving contexts for query: '{query[:50]}...'")
         
         try:
-            # Generate embeddings with detailed logging
+            # Step 1: Try Milvus RAG search first
+            rag_contexts = await self._get_milvus_contexts(query, top_k)
+            
+            # Step 2: Evaluate quality of RAG results
+            context_quality = self._evaluate_context_quality(rag_contexts, query)
+            logger.info(f"📊 RAG context quality score: {context_quality:.2f}")
+            
+            # Step 3: Use web search fallback if RAG quality is poor
+            if context_quality < 0.5 and use_web_fallback:
+                logger.info("🌐 RAG quality insufficient, using web search fallback")
+                web_contexts = await self._get_web_contexts(query, min(top_k, 5))
+                
+                # Combine RAG and web results
+                combined_contexts = rag_contexts + web_contexts
+                combined_contexts.sort(key=lambda x: x.similarity, reverse=True)
+                
+                # Return best results from combined sources
+                final_contexts = combined_contexts[:top_k]
+                logger.info(f"✅ Combined {len(rag_contexts)} RAG + {len(web_contexts)} web contexts")
+                return final_contexts
+            
+            logger.info(f"✅ Using {len(rag_contexts)} RAG contexts (quality sufficient)")
+            return rag_contexts[:top_k]
+            
+        except Exception as e:
+            logger.error(f"❌ Context retrieval failed: {e}", exc_info=True)
+            return []
+    
+    async def _get_milvus_contexts(self, query: str, top_k: int) -> List[RAGContextItem]:
+        """Get contexts from Milvus vector database"""
+        try:
+            # Generate embeddings
             query_embeddings = await embed_texts_async([query])
             
             if not query_embeddings or not query_embeddings[0]:
@@ -383,26 +558,20 @@ class RAGService:
                 return []
             
             query_vector = query_embeddings[0]
-            logger.info(f"✅ Generated embedding vector of dimension: {len(query_vector)}")
-            logger.debug(f"🔢 First 5 embedding values: {query_vector[:5]}")
+            logger.debug(f"🔢 Generated embedding vector of dimension: {len(query_vector)}")
             
-            # Milvus search with detailed logging
-            logger.info(f"🔍 Searching Milvus with top_k={top_k}, metric=COSINE")
+            # Search Milvus
             milvus_results = await self.milvus_client.search(
                 query_vector=query_vector,
                 top_k=min(top_k, 8),
                 metric_type="COSINE"
             )
             
-            logger.info(f"🔍 Milvus returned {len(milvus_results)} raw results")
-            
-            # Process results with detailed logging
+            # Convert to RAG context items
             rag_contexts = []
             for i, result in enumerate(milvus_results):
                 try:
                     similarity = float(result.get("similarity", 0.0))
-                    content_preview = result.get("content", "")[:100]
-                    logger.debug(f"📄 Result {i+1}: similarity={similarity:.4f}, content='{content_preview}...'")
                     
                     if similarity > 0.1:  # Only include reasonably similar results
                         rag_contexts.append(RAGContextItem(
@@ -414,36 +583,217 @@ class RAGService:
                             source_url=result.get("source_url", "milvus_collection"),
                             similarity=similarity
                         ))
-                    else:
-                        logger.debug(f"🚫 Skipped result {i+1} due to low similarity: {similarity:.4f}")
                         
                 except Exception as e:
                     logger.warning(f"❌ Error processing result {i+1}: {e}")
                     continue
             
-            # Sort and return with final logging
             rag_contexts.sort(key=lambda x: x.similarity, reverse=True)
-            final_count = len(rag_contexts)
-            logger.info(f"✅ Successfully processed {final_count} contexts (similarity > 0.1)")
-            
-            if final_count == 0:
-                logger.warning("⚠️ No documents found with sufficient similarity!")
-                logger.info("🔧 Consider: 1) Checking embedding compatibility, 2) Lowering similarity threshold, 3) Increasing top_k")
-            
-            return rag_contexts[:top_k]
+            return rag_contexts
             
         except Exception as e:
-            logger.error(f"❌ Context retrieval failed: {e}", exc_info=True)
+            logger.error(f"❌ Milvus context retrieval failed: {e}")
             return []
+    
+    async def _get_web_contexts(self, query: str, num_results: int) -> List[RAGContextItem]:
+        """Get contexts from web search"""
+        try:
+            # Enhance query for legal search
+            legal_query = self._enhance_query_for_legal_search(query)
+            
+            # Perform web search
+            web_results = await self.web_search_service.search_web(legal_query, num_results)
+            
+            # Convert to RAG contexts
+            web_contexts = self.web_search_service.convert_to_rag_context(web_results)
+            
+            logger.info(f"🌐 Web search returned {len(web_contexts)} contexts")
+            return web_contexts
+            
+        except Exception as e:
+            logger.error(f"❌ Web context retrieval failed: {e}")
+            return []
+    
+    def _enhance_query_for_legal_search(self, query: str) -> str:
+        """Enhance query with legal context for better web search results"""
+        # Add legal context terms if not already present
+        legal_terms = ["law", "legal", "contract", "clause", "agreement", "terms"]
+        query_lower = query.lower()
         
+        if not any(term in query_lower for term in legal_terms):
+            # Add legal context to make search more relevant
+            if "?" in query:
+                enhanced_query = f"{query} law legal"
+            else:
+                enhanced_query = f"{query} legal law contract"
+        else:
+            enhanced_query = query
+        
+        logger.debug(f"Enhanced query: '{enhanced_query}'")
+        return enhanced_query
+    
+    def _evaluate_context_quality(self, contexts: List[RAGContextItem], query: str) -> float:
+        """Evaluate the quality of retrieved contexts"""
+        if not contexts:
+            return 0.0
+        
+        # Quality metrics
+        avg_similarity = sum(ctx.similarity for ctx in contexts) / len(contexts)
+        high_quality_count = sum(1 for ctx in contexts if ctx.similarity > 0.7)
+        content_relevance = self._assess_content_relevance(contexts, query)
+        
+        # Combined quality score (0.0 to 1.0)
+        quality_score = (
+            avg_similarity * 0.4 +
+            (high_quality_count / len(contexts)) * 0.3 +
+            content_relevance * 0.3
+        )
+        
+        return min(quality_score, 1.0)
+    
+    def _assess_content_relevance(self, contexts: List[RAGContextItem], query: str) -> float:
+        """Assess content relevance based on keyword overlap"""
+        if not contexts:
+            return 0.0
+        
+        query_words = set(query.lower().split())
+        relevant_count = 0
+        
+        for context in contexts:
+            content_words = set(context.content.lower().split())
+            overlap = len(query_words & content_words)
+            if overlap >= max(1, len(query_words) * 0.2):  # At least 20% overlap
+                relevant_count += 1
+        
+        return relevant_count / len(contexts)
+    
+    async def answer_with_vertex(self, question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:
+        """Generate an answer using Vertex AI with enhanced context handling"""
+        
+        context_count = len(contexts)
+        
+        # Separate RAG and web contexts for better prompting
+        rag_contexts = [ctx for ctx in contexts if ctx.doc_type != "web_search_result"]
+        web_contexts = [ctx for ctx in contexts if ctx.doc_type == "web_search_result"]
+        
+        # Build enhanced prompt
+        context_text = ""
+        evidence_topics = []
+        
+        if rag_contexts:
+            rag_text = "\n\n".join([f"Legal Document {i+1}:\n{ctx.content}" for i, ctx in enumerate(rag_contexts[:3], 1)])
+            context_text += f"LEGAL DATABASE EVIDENCE:\n{rag_text}\n\n"
+            
+            # Extract topics from legal database
+            for ctx in rag_contexts:
+                if "liability" in ctx.content.lower():
+                    evidence_topics.append("liability law")
+                if "contract" in ctx.content.lower():
+                    evidence_topics.append("contract law")
+                if "risk" in ctx.content.lower():
+                    evidence_topics.append("legal risk")
+        
+        if web_contexts:
+            web_text = "\n\n".join([f"Web Source {i+1}:\n{ctx.content}" for i, ctx in enumerate(web_contexts[:2], 1)])
+            context_text += f"CURRENT WEB INFORMATION:\n{web_text}\n\n"
+        
+        summary_context = f"Document Summary: {summary_hint}\n\n" if summary_hint else ""
+        
+        # Enhanced prompt that handles both legal and general questions
+        prompt = f"""You are a knowledgeable AI assistant with expertise in law and general knowledge.
+
+QUESTION: {question}
+
+AVAILABLE EVIDENCE:
+- Found {len(rag_contexts)} legal database documents
+- Found {len(web_contexts)} current web sources
+- Topics covered: {', '.join(evidence_topics) if evidence_topics else 'various topics'}
+
+{context_text}
+{summary_context}
+
+INSTRUCTIONS:
+1. If this is a legal question, prioritize the legal database evidence and provide comprehensive legal analysis
+2. If this is a general question, use all available sources to provide accurate, current information
+3. Always provide helpful, substantive answers
+4. Use clear, accessible language
+5. If combining legal and general information, clearly distinguish between them
+6. Include practical recommendations where appropriate
+
+Provide a thorough, well-structured response:"""
+        
+        try:
+            answer = await self.vertex_client.generate_text(
+                prompt=prompt,
+                max_tokens=getattr(settings, 'VERTEX_MAX_TOKENS', 1024),
+                temperature=getattr(settings, 'VERTEX_TEMPERATURE', 0.3)
+            )
+            
+            # Retry logic for inadequate responses
+            if self._is_inadequate_response(answer):
+                logger.info("Response seems inadequate, retrying with enhanced prompt")
+                enhanced_answer = await self._retry_with_enhanced_prompt(question, contexts, summary_hint)
+                return enhanced_answer or answer
+            
+            return answer
+            
+        except Exception as e:
+            logger.error(f"Answer generation failed: {e}")
+            return f"I found {context_count} relevant sources but encountered an error generating the response. Please try rephrasing your question."
+
+    def _is_inadequate_response(self, answer: str) -> bool:
+        """Check if response seems inadequate and needs retry"""
+        if not answer or len(answer.strip()) < 50:
+            return True
+        
+        inadequate_phrases = [
+            "no information", "cannot answer", "not provided", 
+            "no context", "unable to answer", "insufficient information",
+            "i am sorry", "i cannot"
+        ]
+        
+        return any(phrase in answer.lower() for phrase in inadequate_phrases)
+
+    async def _retry_with_enhanced_prompt(self, question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:
+        """Retry with more specific prompt when first attempt fails"""
+        
+        context_text = "\n\n".join([f"Source {i+1}: {ctx.content}" for i, ctx in enumerate(contexts[:3])])
+        
+        enhanced_prompt = f"""You are a knowledgeable assistant. The user asked a question and I've found relevant information sources.
+
+TASK: Provide a comprehensive answer using the available information and your knowledge.
+
+QUESTION: {question}
+
+AVAILABLE INFORMATION:
+{context_text}
+
+REQUIREMENTS:
+- Answer the question directly and thoroughly
+- Use the provided information as supporting evidence
+- Apply relevant knowledge even if sources don't directly address all aspects
+- Make the response helpful and informative
+- Use clear, accessible language
+
+Generate a detailed, informative response:"""
+        
+        try:
+            return await self.vertex_client.generate_text(
+                prompt=enhanced_prompt,
+                max_tokens=getattr(settings, 'VERTEX_MAX_TOKENS', 1024),
+                temperature=0.4  # Slightly higher temperature for more creative response
+            )
+        except Exception as e:
+            logger.error(f"Enhanced prompt retry failed: {e}")
+            return None
+    
     async def summarize_200w(self, text: str) -> str:
         """Generate a summary in ≤200 words"""
         if not text or not text.strip():
-            logger.warning("❌ No text provided for summary generation")
+            logger.warning("No text provided for summary generation")
             return "No content available for summary."
         
-        logger.info(f"🔍 Generating summary for {len(text)} characters")
-        logger.debug(f"📄 Input text preview: {text[:200]}...")
+        logger.info(f"Generating summary for {len(text)} characters")
         
         prompt = f"""You are a legal document assistant. Create a concise summary of this legal document in exactly 200 words or fewer.
 
@@ -462,7 +812,6 @@ Document text:
 Summary (≤200 words):"""
         
         try:
-            logger.info("🤖 Calling Vertex AI for summary generation...")
             summary = await self.vertex_client.generate_text(
                 prompt=prompt,
                 max_tokens=300,
@@ -470,7 +819,7 @@ Summary (≤200 words):"""
             )
             
             if not summary or not summary.strip():
-                logger.warning("❌ Vertex AI returned empty summary")
+                logger.warning("Vertex AI returned empty summary")
                 return self._create_fallback_summary(text)
             
             # Ensure word limit
@@ -478,13 +827,11 @@ Summary (≤200 words):"""
             if len(words) > 200:
                 summary = " ".join(words[:200]) + "..."
             
-            logger.info(f"✅ Generated summary: {len(summary)} chars, {len(words)} words")
-            logger.debug(f"📝 Summary content: {summary[:150]}...")
-            
+            logger.info(f"Generated summary: {len(summary)} chars, {len(words)} words")
             return summary
             
         except Exception as e:
-            logger.error(f"❌ Summary generation failed: {e}", exc_info=True)
+            logger.error(f"Summary generation failed: {e}", exc_info=True)
             return self._create_fallback_summary(text)
     
     def _create_fallback_summary(self, text: str) -> str:
@@ -496,185 +843,19 @@ Summary (≤200 words):"""
         sample_text = " ".join(words[:150])
         return f"This legal document contains {len(words)} words covering contractual terms and conditions. {sample_text}..."
     
-    async def answer_with_vertex(self, question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:
-        """Generate an answer using Vertex AI with RAG contexts"""
-        
-        context_count = len(contexts)
-        
-        # Build dynamic context based on evidence
-        context_text = ""
-        evidence_topics = []
-        if contexts:
-            context_items = []
-            for i, ctx in enumerate(contexts[:5], 1):
-                context_items.append(f"Legal Document {i}:\n{ctx.content}")
-                # Extract key topics from evidence for dynamic prompting
-                if "liability" in ctx.content.lower():
-                    evidence_topics.append("liability principles")
-                if "indemnif" in ctx.content.lower():
-                    evidence_topics.append("indemnification")
-                if "risk" in ctx.content.lower():
-                    evidence_topics.append("risk management")
-            
-            context_text = "\n\n".join(context_items)
-        
-        summary_context = f"\nDocument Summary: {summary_hint}" if summary_hint else ""
-        
-        # ✅ DYNAMIC PROMPT: Adapts based on evidence and question
-        prompt = f"""You are a legal document assistant. Answer the user's legal question using the provided evidence and your legal expertise.
-
-    EVIDENCE ANALYSIS:
-    - Found {context_count} relevant legal documents
-    - Topics covered: {', '.join(evidence_topics) if evidence_topics else 'general legal principles'}
-    - Evidence quality: High similarity matches
-
-    INSTRUCTIONS:
-    1. Use the legal documents below as primary evidence for your answer
-    2. Combine this evidence with your legal knowledge to provide a comprehensive response
-    3. If the documents don't directly address the question, use them as supporting context and apply relevant legal principles
-    4. Always provide a substantive, helpful answer
-    5. Use simple, clear language for non-lawyers
-    6. Include practical implications and recommendations
-
-    LEGAL EVIDENCE:
-    {context_text}
-    {summary_context}
-
-    USER QUESTION: {question}
-
-    Provide a thorough, evidence-based answer that helps the user understand the legal concept:"""
-        
-        try:
-            answer = await self.vertex_client.generate_text(
-                prompt=prompt,
-                max_tokens=getattr(settings, 'VERTEX_MAX_TOKENS', 1024),
-                temperature=getattr(settings, 'VERTEX_TEMPERATURE', 0.3)
-            )
-            
-            # ✅ RETRY LOGIC: If response seems inadequate, try enhanced prompt
-            if self._is_inadequate_response(answer):
-                logger.info("Response seems inadequate, retrying with enhanced prompt")
-                enhanced_answer = await self._retry_with_enhanced_prompt(question, contexts, summary_hint)
-                return enhanced_answer or answer
-            
-            return answer
-            
-        except Exception as e:
-            logger.error(f"Answer generation failed: {e}")
-            # Only use minimal fallback as last resort
-            return f"I found {context_count} relevant legal documents but encountered an error generating the response. Please try rephrasing your question."
-
-    def _is_inadequate_response(self, answer: str) -> bool:
-        """Check if response seems inadequate and needs retry"""
-        if not answer or len(answer.strip()) < 50:
-            return True
-        
-        inadequate_phrases = [
-            "no information", "cannot answer", "not provided", 
-            "no context", "unable to answer", "insufficient information",
-            "i am sorry", "i cannot"
-        ]
-        
-        return any(phrase in answer.lower() for phrase in inadequate_phrases)
-
-    async def _retry_with_enhanced_prompt(self, question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:
-        """Retry with more specific prompt when first attempt fails"""
-        
-        context_text = "\n\n".join([f"Document {i+1}: {ctx.content}" for i, ctx in enumerate(contexts[:3])])
-        
-        # More directive prompt for retry
-        enhanced_prompt = f"""You are a knowledgeable legal assistant. The user has asked about a legal topic and I've found relevant legal documents.
-
-    TASK: Provide a comprehensive answer about the legal concept in the question, using both the legal documents provided and your legal expertise.
-
-    RETRIEVED LEGAL DOCUMENTS:
-    {context_text}
-
-    USER'S LEGAL QUESTION: {question}
-
-    REQUIREMENTS:
-    - Explain the legal concept clearly in simple terms
-    - Use the provided documents as supporting evidence where relevant
-    - Apply general legal principles even if documents don't directly address the topic
-    - Include practical advice and risk considerations
-    - Make the response helpful and actionable
-
-    Generate a detailed, informative response:"""
-        
-        try:
-            return await self.vertex_client.generate_text(
-                prompt=enhanced_prompt,
-                max_tokens=getattr(settings, 'VERTEX_MAX_TOKENS', 1024),
-                temperature=0.4  # Slightly higher temperature for more creative response
-            )
-        except Exception as e:
-            logger.error(f"Enhanced prompt retry failed: {e}")
-            return None
-
-    
-    def _create_context_aware_fallback(self, question: str, contexts: List[RAGContextItem]) -> str:
-        """Create fallback that acknowledges found evidence"""
-        context_count = len(contexts)
-        
-        if context_count > 0:
-            return f"""Based on {context_count} relevant legal documents I found, here's what I can tell you:
-
-🔍 **Legal Research**: I found relevant information in legal documents including regulations about various legal matters and statutory frameworks.
-
-📚 **Key Insights**: 
-- Legal obligations and rights are clearly defined in statutory frameworks
-- Compliance requirements are established by appropriate authorities
-- Penalties and procedures are specified for various scenarios
-
-💡 **Recommendation**: While I found relevant legal precedents, the specific details are complex. I recommend consulting with a qualified attorney who can provide advice specific to your situation.
-
-❓ **Need More Details**: Feel free to ask more specific questions about the legal concepts you're interested in."""
-        
-        else:
-            return "I couldn't find specific legal precedents for your question. Please try rephrasing your question or ask about a specific legal concept."
-    
-    def _create_fallback_answer(self, question: str, contexts: List[RAGContextItem]) -> str:
-        """Create fallback answer when Vertex AI is unavailable"""
-        context_count = len(contexts)
-        question_lower = question.lower()
-        
-        if "risk" in question_lower or "danger" in question_lower:
-            return f"""Based on {context_count} relevant legal documents, here are the key risk considerations:
-
-🔍 **Analysis**: Legal documents often contain terms that may not be immediately obvious to non-lawyers.
-
-⚠️ **Key Points**: 
-- Review liability and indemnification clauses carefully
-- Understand termination conditions and notice requirements  
-- Pay attention to payment terms and penalties
-- Consider governing law and dispute resolution mechanisms
-
-💡 **Recommendation**: Given the complexity of legal language, I strongly recommend having a qualified attorney review any concerning clauses or the entire document before signing.
-
-❓ **Next Steps**: Feel free to ask about specific sections or terms you'd like explained in simpler language."""
-
-        else:
-            return f"""Thank you for your question. I've analyzed {context_count} relevant legal documents to provide guidance:
-
-🎯 **Key Finding**: Legal documents are designed to protect all parties by clearly defining rights, responsibilities, and procedures.
-
-📚 **From Legal Research**: The information comes from analysis of similar legal documents and established legal principles.
-
-⚖️ **Legal Disclaimer**: This is general information only. For advice specific to your situation, please consult with a qualified attorney.
-
-Feel free to ask more specific questions about particular clauses or terms!"""
-    
     async def get_service_stats(self) -> Dict[str, Any]:
         """Get comprehensive service statistics"""
         return {
             "initialized": self.initialized,
             "milvus_connected": self.milvus_client.connected,
             "vertex_initialized": self.vertex_client.initialized,
+            "web_search_initialized": self.web_search_service.initialized,
             "collection_name": getattr(settings, 'MILVUS_COLLECTION', 'unknown'),
             "embedding_dimension": 768,
             "dependencies": {
                 "pymilvus_available": PYMILVUS_AVAILABLE,
-                "requests_available": True,  # We know this is available since we're using it
+                "google_search_available": GOOGLE_SEARCH_AVAILABLE,
+                "requests_available": True,
                 "http_client": True
             }
         }
@@ -684,20 +865,20 @@ Feel free to ask more specific questions about particular clauses or terms!"""
 _rag_service = None
 
 
-async def get_rag_service() -> RAGService:
+async def get_rag_service() -> EnhancedRAGService:
     """Get or create the global RAG service instance"""
     global _rag_service
     if _rag_service is None:
-        _rag_service = RAGService()
+        _rag_service = EnhancedRAGService()
         await _rag_service.initialize()
     return _rag_service
 
 
 # Public API functions for router integration
-async def retrieve_contexts(query: str, top_k: int = 8) -> List[RAGContextItem]:
-    """Retrieve relevant contexts for a query"""
+async def retrieve_contexts(query: str, top_k: int = 8, use_web_fallback: bool = True) -> List[RAGContextItem]:
+    """Retrieve relevant contexts for a query with web search fallback"""
     service = await get_rag_service()
-    return await service.retrieve_contexts(query, top_k)
+    return await service.retrieve_contexts(query, top_k, use_web_fallback)
 
 
 async def summarize_200w(text: str) -> str:
@@ -707,13 +888,13 @@ async def summarize_200w(text: str) -> str:
 
 
 async def answer_with_vertex(question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:
-    """Generate an answer using Vertex AI with RAG contexts"""
+    """Generate an answer using Vertex AI with RAG contexts and web search fallback"""
     service = await get_rag_service()
     return await service.answer_with_vertex(question, contexts, summary_hint)
 
 
 async def health_check() -> Dict[str, Any]:
-    """Health check for RAG service"""
+    """Health check for enhanced RAG service"""
     try:
         service = await get_rag_service()
         stats = await service.get_service_stats()

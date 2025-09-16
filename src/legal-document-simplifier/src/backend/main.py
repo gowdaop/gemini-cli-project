@@ -151,8 +151,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             detail="Internal server error. Please try again later."
         ).dict()
     )
-
-# Health check endpoint (no auth required)
 @app.get("/healthz", tags=["health"])
 async def health_check():
     """Health check endpoint for Cloud Run"""
@@ -161,6 +159,171 @@ async def health_check():
         "version": settings.API_VERSION,
         "timestamp": time.time()
     }
+
+# 🔥 ADD THESE NEW ENDPOINTS HERE 🔥
+
+@app.get("/health/detailed", tags=["health"])
+async def detailed_health_check():
+    """Detailed health check with full service diagnostics"""
+    try:
+        from .services import rag
+        
+        service = await rag.get_rag_service()
+        stats = await service.get_service_stats()
+        
+        return {
+            "api": {
+                "status": "healthy",
+                "version": settings.API_VERSION,
+                "debug_mode": settings.DEBUG
+            },
+            "environment": {
+                "gcp_project": settings.GCP_PROJECT_ID or "not_configured",
+                "milvus_host": settings.MILVUS_HOST,
+                "milvus_collection": settings.MILVUS_COLLECTION
+            },
+            "services": stats,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": time.time()
+        }
+
+@app.get("/health/config", tags=["health"])
+async def config_health_check():
+    """Check configuration health (sensitive info masked)"""
+    return {
+        "google_api_key": "configured" if getattr(settings, 'GOOGLE_API_KEY', None) else "missing",
+        "google_search_engine_id": "configured" if getattr(settings, 'GOOGLE_SEARCH_ENGINE_ID', None) else "missing",
+        "gcp_project": "configured" if settings.GCP_PROJECT_ID else "missing",
+        "milvus_collection": settings.MILVUS_COLLECTION,
+        "vertex_model": getattr(settings, 'VERTEX_MODEL', 'gemini-2.0-flash'),
+        "debug_mode": settings.DEBUG,
+        "docai_processor": "configured" if settings.DOCAI_PROCESSOR_ID else "missing"
+    }
+
+@app.get("/health/services", tags=["health"])
+async def all_services_health():
+    """Check health of all integrated services"""
+    try:
+        from .services import rag
+        
+        service = await rag.get_rag_service()
+        
+        # Check Milvus
+        milvus_status = "healthy" if service.milvus_client.connected else "unhealthy"
+        
+        # Check Vertex AI
+        vertex_status = "healthy" if service.vertex_client.initialized else "unhealthy"
+        
+        # Check Web Search
+        web_status = "healthy" if service.web_search_service.initialized else "unhealthy"
+        
+        # Overall status
+        overall_status = "healthy" if all([
+            service.milvus_client.connected,
+            service.vertex_client.initialized,
+            service.web_search_service.initialized
+        ]) else "degraded"
+        
+        return {
+            "overall_status": overall_status,
+            "services": {
+                "milvus": {
+                    "status": milvus_status,
+                    "connected": service.milvus_client.connected,
+                    "collection": settings.MILVUS_COLLECTION
+                },
+                "vertex_ai": {
+                    "status": vertex_status,
+                    "initialized": service.vertex_client.initialized,
+                    "model": getattr(settings, 'VERTEX_MODEL', 'gemini-2.0-flash')
+                },
+                "web_search": {
+                    "status": web_status,
+                    "initialized": service.web_search_service.initialized,
+                    "project_configured": bool(service.web_search_service.project_id),    # ✅ Vertex AI Search
+                    "engine_configured": bool(service.web_search_service.engine_id)
+                }
+            },
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        return {
+            "overall_status": "unhealthy",
+            "error": str(e),
+            "timestamp": time.time()
+        }
+
+@app.post("/health/test-search", tags=["health"])
+async def test_web_search(query: str = "contract liability"):
+    """Test web search with a specific query"""
+    try:
+        from .services import rag
+        
+        service = await rag.get_rag_service()
+        
+        # Test web search
+        web_results = await service.web_search_service.search_web(query, num_results=3)
+        
+        # Test RAG context conversion
+        rag_contexts = service.web_search_service.convert_to_rag_context(web_results)
+        
+        return {
+            "status": "success",
+            "query": query,
+            "web_results_count": len(web_results),
+            "rag_contexts_count": len(rag_contexts),
+            "sample_results": [
+                {
+                    "title": result.get("title", "")[:100],
+                    "source": result.get("source", ""),
+                    "link": result.get("link", "")[:100]
+                } for result in web_results[:2]
+            ] if web_results else []
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "query": query,
+            "error": str(e)
+        }
+# Health check endpoint (no auth required)
+# Health check endpoint (no auth required)
+@app.get("/healthz", tags=["health"])
+async def health_check():
+    """Enhanced health check endpoint for Cloud Run"""
+    try:
+        # Import here to avoid circular imports
+        from .services import rag
+        
+        # Get service stats
+        service_stats = await rag.health_check()
+        
+        return {
+            "status": "ok",
+            "version": settings.API_VERSION,
+            "timestamp": time.time(),
+            "services": {
+                "rag_service": service_stats.get("status", "unknown"),
+                "milvus": service_stats.get("milvus_connected", False),
+                "vertex_ai": service_stats.get("vertex_initialized", False),
+                "web_search": service_stats.get("web_search_initialized", False)
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "degraded",
+            "version": settings.API_VERSION,
+            "timestamp": time.time(),
+            "error": str(e)
+        }
+
 
 # Root endpoint
 @app.get("/", tags=["root"])

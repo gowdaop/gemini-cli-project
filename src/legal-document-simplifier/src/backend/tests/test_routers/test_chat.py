@@ -9,7 +9,7 @@ client = TestClient(app)
 
 class TestChatRouter:
     
-    def test_chat_success(self, mock_api_key):
+    def test_chat_success(self, mock_api_key, client):
         """Test successful chat interaction - FINAL FIX: Use integers for chunk_id"""
         
         # 🎯 FINAL FIX: Use integers for chunk_id instead of strings
@@ -35,13 +35,12 @@ class TestChatRouter:
         ]
         
         # Mock the retrieve_comprehensive_evidence function directly
-        with patch('src.backend.routers.chat.retrieve_comprehensive_evidence') as mock_retrieve, \
-             patch('src.backend.routers.chat.ResponseGenerator.generate_legal_response') as mock_response:
+        with patch('src.backend.services.rag.retrieve_contexts') as mock_retrieve, patch('src.backend.services.rag.answer_with_vertex') as mock_response:
             
             mock_retrieve.return_value = sample_rag_contexts
             mock_response.return_value = "This is an indemnification clause that protects one party from claims."
             
-            headers = {"x-api-key": mock_api_key, "Host": "testserver"}
+            headers = {"x-api-key": mock_api_key}
             payload = {
                 "question": "What is an indemnification clause?",
                 "conversation_id": None
@@ -56,15 +55,14 @@ class TestChatRouter:
             assert "conversation_id" in data
             assert len(data["evidence"]) > 0  # This will now pass!
 
-    def test_chat_with_conversation_id(self, mock_api_key):
+    def test_chat_with_conversation_id(self, mock_api_key, client):
         """Test chat with existing conversation"""
-        with patch('src.backend.routers.chat.retrieve_comprehensive_evidence') as mock_retrieve, \
-             patch('src.backend.routers.chat.ResponseGenerator.generate_legal_response') as mock_response:
+        with patch('src.backend.services.rag.retrieve_contexts') as mock_retrieve, patch('src.backend.services.rag.answer_with_vertex') as mock_response:
             
             mock_retrieve.return_value = []
             mock_response.return_value = "Test response"
             
-            headers = {"x-api-key": mock_api_key, "Host": "testserver"}
+            headers = {"x-api-key": mock_api_key}
             payload = {
                 "question": "Follow up question",
                 "conversation_id": "test-conversation-123"
@@ -75,7 +73,7 @@ class TestChatRouter:
             data = response.json()
             assert "conversation_id" in data
 
-    def test_chat_empty_question(self, mock_api_key):
+    def test_chat_empty_question(self, mock_api_key, client):
         """Test chat with empty question"""
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         payload = {"question": ""}
@@ -83,7 +81,7 @@ class TestChatRouter:
         response = client.post("/chat/", json=payload, headers=headers)
         assert response.status_code in [400, 422]
 
-    def test_chat_too_long_question(self, mock_api_key):
+    def test_chat_too_long_question(self, mock_api_key, client):
         """Test chat with overly long question"""
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         payload = {"question": "x" * 1001}
@@ -91,15 +89,14 @@ class TestChatRouter:
         response = client.post("/chat/", json=payload, headers=headers)
         assert response.status_code == 400
 
-    def test_get_conversation_history_success(self, mock_api_key):
+    def test_get_conversation_history_success(self, mock_api_key, client):
         """Test retrieving conversation history"""
-        with patch('src.backend.routers.chat.retrieve_comprehensive_evidence') as mock_retrieve, \
-             patch('src.backend.routers.chat.ResponseGenerator.generate_legal_response') as mock_response:
+        with patch('src.backend.services.rag.retrieve_contexts') as mock_retrieve, patch('src.backend.services.rag.answer_with_vertex') as mock_response:
             
             mock_retrieve.return_value = []
             mock_response.return_value = "Test response"
             
-            headers = {"x-api-key": mock_api_key, "Host": "testserver"}
+            headers = {"x-api-key": mock_api_key}
             create_payload = {"question": "Test question"}
             create_response = client.post("/chat/", json=create_payload, headers=headers)
             conversation_id = create_response.json()["conversation_id"]
@@ -110,21 +107,20 @@ class TestChatRouter:
             assert "conversation_id" in data
             assert "history" in data
 
-    def test_get_conversation_history_not_found(self, mock_api_key):
+    def test_get_conversation_history_not_found(self, mock_api_key, client):
         """Test retrieving non-existent conversation"""
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         response = client.get("/chat/conversations/non-existent", headers=headers)
         assert response.status_code == 404
 
-    def test_delete_conversation_success(self, mock_api_key):
+    def test_delete_conversation_success(self, mock_api_key, client):
         """Test deleting conversation"""
-        with patch('src.backend.routers.chat.retrieve_comprehensive_evidence') as mock_retrieve, \
-             patch('src.backend.routers.chat.ResponseGenerator.generate_legal_response') as mock_response:
+        with patch('src.backend.services.rag.retrieve_contexts') as mock_retrieve, patch('src.backend.services.rag.answer_with_vertex') as mock_response:
             
             mock_retrieve.return_value = []
             mock_response.return_value = "Test response"
             
-            headers = {"x-api-key": mock_api_key, "Host": "testserver"}
+            headers = {"x-api-key": mock_api_key}
             create_payload = {"question": "Test question"}
             create_response = client.post("/chat/", json=create_payload, headers=headers)
             conversation_id = create_response.json()["conversation_id"]
@@ -134,7 +130,7 @@ class TestChatRouter:
             data = response.json()
             assert "message" in data
 
-    def test_chat_health(self, mock_api_key):
+    def test_chat_health(self, mock_api_key, client):
         """Test chat health endpoint"""
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         response = client.get("/chat/health", headers=headers)
@@ -144,7 +140,7 @@ class TestChatRouter:
         assert "status" in data
         assert data["status"] == "healthy"
 
-    def test_chat_stats(self, mock_api_key):
+    def test_chat_stats(self, mock_api_key, client):
         """Test chat statistics endpoint"""
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         response = client.get("/chat/stats", headers=headers)
@@ -153,3 +149,4 @@ class TestChatRouter:
         data = response.json()
         assert "total_conversations" in data
         assert "total_messages" in data
+

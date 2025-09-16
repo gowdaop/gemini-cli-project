@@ -107,6 +107,29 @@ class ChatAPI {
             throw error;
         }
     }
+
+    async newConversation() {
+        try {
+            const fetchPromise = fetch(`${this.baseURL}/chat/new`, {
+                method: 'POST',
+                headers: {
+                    'x-api-key': this.apiKey
+                }
+            });
+
+            const response = await this.createTimeoutPromise(fetchPromise, 10000);
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.detail || `Request failed with status ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Chat API newConversation error:', error);
+            throw error;
+        }
+    }
 }
 
 // ✅ FIXED: Proper module export for compatibility

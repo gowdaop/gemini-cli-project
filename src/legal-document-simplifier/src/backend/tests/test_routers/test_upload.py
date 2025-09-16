@@ -6,8 +6,7 @@ from fastapi import status
 
 class TestUploadRouter:
     
-    @pytest.mark.asyncio
-    async def test_upload_success(self, async_client, mock_api_key):
+    def test_upload_success(self, client, mock_api_key):
         """Test successful file upload"""
         with patch('src.backend.services.ocr.extract_text') as mock_extract:
             mock_extract.return_value = {
@@ -25,9 +24,9 @@ class TestUploadRouter:
             }
             
             files = {"file": ("test.pdf", b"fake pdf content", "application/pdf")}
-            headers = {"x-api-key": mock_api_key, "Host": "testserver"}
+            headers = {"x-api-key": mock_api_key}
             
-            response = await async_client.post("/upload/", files=files, headers=headers)
+            response = client.post("/upload/", files=files, headers=headers)
             
             assert response.status_code == 200
             data = response.json()
@@ -35,8 +34,7 @@ class TestUploadRouter:
             assert data["ocr"]["full_text"] == "Sample document text"
             assert len(data["ocr"]["blocks"]) > 0
 
-    @pytest.mark.asyncio
-    async def test_upload_no_auth(self, async_client):
+    def test_upload_no_auth(self, client):
         """Test upload without authentication"""
         # Temporarily clear auth override for this test
         from src.backend.main import app, require_api_key
@@ -48,9 +46,9 @@ class TestUploadRouter:
         
         try:
             files = {"file": ("test.pdf", b"fake content", "application/pdf")}
-            headers = {"Host": "testserver"}  # No x-api-key
+            headers = {}
             
-            response = await async_client.post("/upload/", files=files, headers=headers)
+            response = client.post("/upload/", files=files, headers=headers)
             
             assert response.status_code == 401
             
@@ -59,39 +57,36 @@ class TestUploadRouter:
             if original_override:
                 app.dependency_overrides[require_api_key] = original_override
 
-    @pytest.mark.asyncio
-    async def test_upload_invalid_file_type(self, async_client, mock_api_key):
+    def test_upload_invalid_file_type(self, client, mock_api_key):
         """Test upload with invalid file type"""
         files = {"file": ("test.exe", b"fake content", "application/exe")}
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         
-        response = await async_client.post("/upload/", files=files, headers=headers)
+        response = client.post("/upload/", files=files, headers=headers)
         
         assert response.status_code == 415  # Unsupported Media Type
         data = response.json()
         assert "detail" in data
         assert "Unsupported file type" in data["detail"]
 
-    @pytest.mark.asyncio
-    async def test_upload_large_file(self, async_client, mock_api_key):
+    def test_upload_large_file(self, client, mock_api_key):
         """Test upload of oversized file"""
         # Create large content that exceeds MAX_FILE_SIZE
         large_content = b"x" * (25 * 1024 * 1024)  # 25MB
         files = {"file": ("large.pdf", large_content, "application/pdf")}
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         
-        response = await async_client.post("/upload/", files=files, headers=headers)
+        response = client.post("/upload/", files=files, headers=headers)
         
         # This test might pass if file size checking is not implemented in validate_file
         # Adjust assertion based on your actual MAX_FILE_SIZE setting
         assert response.status_code in [413, 200]  # Either rejected or accepted
 
-    @pytest.mark.asyncio
-    async def test_upload_health(self, async_client, mock_api_key):
+    def test_upload_health(self, client, mock_api_key):
         """Test upload health endpoint"""
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         
-        response = await async_client.get("/upload/health", headers=headers)
+        response = client.get("/upload/health", headers=headers)
         
         assert response.status_code == 200
         data = response.json()
@@ -100,26 +95,24 @@ class TestUploadRouter:
         assert "service" in data
         assert data["service"] == "upload"
 
-    @pytest.mark.asyncio
-    async def test_upload_missing_file(self, async_client, mock_api_key):
+    def test_upload_missing_file(self, client, mock_api_key):
         """Test upload with missing file"""
         headers = {"x-api-key": mock_api_key, "Host": "testserver"}
         
         # Send request without file
-        response = await async_client.post("/upload/", headers=headers)
+        response = client.post("/upload/", headers=headers)
         
         assert response.status_code == 422  # Validation error
 
-    @pytest.mark.asyncio
-    async def test_upload_ocr_service_error(self, async_client, mock_api_key):
+    def test_upload_ocr_service_error(self, client, mock_api_key):
         """Test upload when OCR service fails"""
         with patch('src.backend.services.ocr.extract_text') as mock_extract:
             mock_extract.side_effect = Exception("OCR service failed")
             
             files = {"file": ("test.pdf", b"fake pdf content", "application/pdf")}
-            headers = {"x-api-key": mock_api_key, "Host": "testserver"}
+            headers = {"x-api-key": mock_api_key}
             
-            response = await async_client.post("/upload/", files=files, headers=headers)
+            response = client.post("/upload/", files=files, headers=headers)
             
             assert response.status_code == 500
             data = response.json()

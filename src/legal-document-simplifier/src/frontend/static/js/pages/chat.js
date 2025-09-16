@@ -1,23 +1,18 @@
-// Chat Page Controller - Performance Optimized
-class ChatPage {
+// Professional Legal Chat Interface Controller
+
+class LegalChatPage {
     constructor() {
         this.api = new ChatAPI();
         this.conversationId = null;
         this.isLoading = false;
         this.documentContext = null;
+        this.recentDocuments = [];
         
         // DOM elements
-        this.chatMessages = null;
-        this.chatInput = null;
-        this.sendBtn = null;
-        this.fileInput = null;
-        this.sidebar = null;
+        this.elements = {};
         
         // Message history
         this.messages = [];
-        
-        // ✅ Performance: Debounce resize
-        this.resizeDebounce = null;
         
         this.init();
     }
@@ -26,12 +21,10 @@ class ChatPage {
         try {
             this.initializeElements();
             this.setupEventListeners();
-            this.loadInitialContext();
+            this.loadRecentDocuments();
+            this.setupTextareaAutoResize();
             
-            // ✅ Performance: Simplified textarea resize
-            this.setupTextareaResize();
-            
-            console.log('✅ Chat page initialized successfully');
+            console.log('✅ Legal Chat page initialized successfully');
         } catch (error) {
             console.error('❌ Chat page initialization failed:', error);
             this.showError('Failed to initialize chat. Please refresh the page.');
@@ -40,87 +33,83 @@ class ChatPage {
 
     initializeElements() {
         // Main elements
-        this.chatMessages = DOM.id('chatMessages');
-        this.chatInput = DOM.id('chatInput');
-        this.sendBtn = DOM.id('sendBtn');
-        this.fileInput = DOM.id('fileInput');
-        this.sidebar = DOM.id('chatSidebar');
-        this.conversationList = DOM.id('conversationList');
-        
-        // Control buttons
-        this.attachFileBtn = DOM.id('attachFileBtn');
-        this.toggleSidebarBtn = DOM.id('toggleSidebarBtn');
-        this.clearChatBtn = DOM.id('clearChatBtn');
-        this.newChatBtn = DOM.id('newChatBtn');
-        this.uploadDocBtn = DOM.id('uploadDocBtn');
-        this.viewResultsBtn = DOM.id('viewResultsBtn');
-        
-        // Context elements
-        this.documentContextContainer = DOM.id('documentContext');
-        
-        if (!this.chatMessages || !this.chatInput || !this.sendBtn) {
+        this.elements = {
+            chatMessages: DOM.id('chatMessages'),
+            chatInput: DOM.id('chatInput'),
+            sendBtn: DOM.id('sendBtn'),
+            clearChatBtn: DOM.id('clearChatBtn'),
+            
+            // Context elements
+            contextIndicator: DOM.id('contextIndicator'),
+            contextFilename: DOM.id('contextFilename'),
+            removeContextBtn: DOM.id('removeContextBtn'),
+            
+            // Recent docs elements
+            recentDocsBtn: DOM.id('recentDocsBtn'),
+            recentUploadsDropup: DOM.id('recentUploadsDropup'),
+            closeDropupBtn: DOM.id('closeDropupBtn'),
+            recentDocsList: DOM.id('recentDocsList'),
+            
+            // Upload elements
+            uploadBtn: DOM.id('uploadBtn'),
+            fileInput: DOM.id('fileInput'),
+            
+            // Loading
+            loadingOverlay: DOM.id('loadingOverlay')
+        };
+
+        if (!this.elements.chatMessages || !this.elements.chatInput || !this.elements.sendBtn) {
             throw new Error('Required DOM elements not found');
         }
     }
 
     setupEventListeners() {
         // Send message
-        this.sendBtn?.addEventListener('click', () => this.handleSendMessage());
+        this.elements.sendBtn?.addEventListener('click', () => this.handleSendMessage());
         
-        // Input handling - ✅ Optimized with debouncing
-        this.chatInput?.addEventListener('keydown', (e) => this.handleInputKeydown(e));
-        this.chatInput?.addEventListener('input', this.debounce(() => this.updateSendButton(), 100));
+        // Input handling
+        this.elements.chatInput?.addEventListener('keydown', (e) => this.handleInputKeydown(e));
+        this.elements.chatInput?.addEventListener('input', () => this.updateSendButton());
         
-        // File handling
-        this.attachFileBtn?.addEventListener('click', () => this.fileInput?.click());
-        this.fileInput?.addEventListener('change', (e) => this.handleFileUpload(e));
+        // Clear chat
+        this.elements.clearChatBtn?.addEventListener('click', () => this.clearChat());
         
-        // Controls
-        this.toggleSidebarBtn?.addEventListener('click', () => this.toggleSidebar());
-        this.clearChatBtn?.addEventListener('click', () => this.clearConversation());
+        // Context management
+        this.elements.removeContextBtn?.addEventListener('click', () => this.removeDocumentContext());
         
-        // Quick actions
-        this.newChatBtn?.addEventListener('click', () => this.startNewConversation());
-        this.uploadDocBtn?.addEventListener('click', () => window.location.href = 'upload.html');
-        this.viewResultsBtn?.addEventListener('click', () => window.location.href = 'results.html');
+        // Recent documents
+        this.elements.recentDocsBtn?.addEventListener('click', () => this.toggleRecentDocsDropup());
+        this.elements.closeDropupBtn?.addEventListener('click', () => this.hideRecentDocsDropup());
+        
+        // File upload
+        this.elements.uploadBtn?.addEventListener('click', () => this.elements.fileInput?.click());
+        this.elements.fileInput?.addEventListener('change', (e) => this.handleFileUpload(e));
         
         // Suggestion buttons
         this.setupSuggestionButtons();
-    }
-
-    // ✅ Performance: Debounce utility
-    debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
+        
+        // Click outside to close dropup
+        document.addEventListener('click', (e) => this.handleOutsideClick(e));
     }
 
     setupSuggestionButtons() {
-        // ✅ Use event delegation for better performance
-        this.chatMessages?.addEventListener('click', (e) => {
+        this.elements.chatMessages?.addEventListener('click', (e) => {
             if (e.target.classList.contains('suggestion-btn')) {
                 const question = e.target.dataset.question;
                 if (question) {
-                    this.chatInput.value = question;
+                    this.elements.chatInput.value = question;
                     this.handleSendMessage();
                 }
             }
         });
     }
 
-    setupTextareaResize() {
-        if (!this.chatInput) return;
+    setupTextareaAutoResize() {
+        if (!this.elements.chatInput) return;
         
-        // ✅ Simplified resize logic
-        this.chatInput.addEventListener('input', () => {
-            this.chatInput.style.height = 'auto';
-            this.chatInput.style.height = Math.min(this.chatInput.scrollHeight, 100) + 'px';
+        this.elements.chatInput.addEventListener('input', () => {
+            this.elements.chatInput.style.height = 'auto';
+            this.elements.chatInput.style.height = Math.min(this.elements.chatInput.scrollHeight, 120) + 'px';
         });
     }
 
@@ -132,14 +121,14 @@ class ChatPage {
     }
 
     updateSendButton() {
-        const hasText = this.chatInput?.value.trim().length > 0;
-        if (this.sendBtn) {
-            this.sendBtn.disabled = !hasText || this.isLoading;
+        const hasText = this.elements.chatInput?.value.trim().length > 0;
+        if (this.elements.sendBtn) {
+            this.elements.sendBtn.disabled = !hasText || this.isLoading;
         }
     }
 
     async handleSendMessage() {
-        const message = this.chatInput?.value.trim();
+        const message = this.elements.chatInput?.value.trim();
         if (!message || this.isLoading) return;
 
         try {
@@ -151,16 +140,18 @@ class ChatPage {
             
             // Add user message
             this.addMessage('user', message);
-            this.chatInput.value = '';
-            this.chatInput.style.height = 'auto'; // Reset height
+            
+            // Clear input and reset height
+            this.elements.chatInput.value = '';
+            this.elements.chatInput.style.height = 'auto';
             this.updateSendButton();
             
             // Show typing indicator
             this.showTypingIndicator();
             
-            // ✅ FIXED: Better error handling for API calls
+            // Send to API
             const response = await this.api.sendMessage(
-                message, 
+                message,
                 this.conversationId,
                 this.documentContext?.ocr,
                 this.documentContext?.summary
@@ -174,10 +165,9 @@ class ChatPage {
             this.addMessage('bot', response.answer, response.evidence);
             
         } catch (error) {
-            console.error('Send message error:', error);
+            console.error('❌ Send message error:', error);
             this.hideTypingIndicator();
             
-            // ✅ Better error messages
             let errorMessage = 'Sorry, I encountered an error. Please try again.';
             if (error.message.includes('timed out')) {
                 errorMessage = 'The request timed out. Please check your connection and try again.';
@@ -186,6 +176,7 @@ class ChatPage {
             }
             
             this.addMessage('bot', errorMessage);
+            
         } finally {
             this.isLoading = false;
             this.updateSendButton();
@@ -193,9 +184,8 @@ class ChatPage {
         }
     }
 
-    // ✅ Optimized message rendering
     addMessage(sender, text, evidence = null) {
-        if (!this.chatMessages) return;
+        if (!this.elements.chatMessages) return;
 
         const messageEl = document.createElement('div');
         messageEl.classList.add('message', sender);
@@ -203,7 +193,6 @@ class ChatPage {
         const contentEl = document.createElement('div');
         contentEl.classList.add('message-content');
         
-        // Simple text handling - no heavy processing
         if (sender === 'bot') {
             contentEl.innerHTML = this.formatBotMessage(text);
         } else {
@@ -217,19 +206,45 @@ class ChatPage {
         messageEl.appendChild(contentEl);
         messageEl.appendChild(timeEl);
         
-        this.chatMessages.appendChild(messageEl);
+        // Add evidence if available
+        if (evidence && evidence.length > 0) {
+            const evidenceEl = this.createEvidenceElement(evidence);
+            messageEl.appendChild(evidenceEl);
+        }
+        
+        this.elements.chatMessages.appendChild(messageEl);
         this.messages.push({ sender, text, timestamp: Date.now() });
         
-        // ✅ Optimized scrolling
-        requestAnimationFrame(() => this.scrollToBottom());
+        this.scrollToBottom();
     }
 
-    // ✅ Simplified message formatting
     formatBotMessage(text) {
-        // Basic formatting only - avoid heavy regex
+        // Basic formatting for bot messages
         text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
         text = text.replace(/\n/g, '<br>');
         return text;
+    }
+
+    createEvidenceElement(evidence) {
+        const evidenceEl = document.createElement('div');
+        evidenceEl.className = 'message-evidence';
+        evidenceEl.innerHTML = `
+            <div class="evidence-header">
+                <i class="fas fa-book-open"></i>
+                <span>Legal References (${evidence.length})</span>
+            </div>
+            <div class="evidence-items">
+                ${evidence.slice(0, 3).map(item => `
+                    <div class="evidence-item">
+                        <div class="evidence-source">${item.doc_type || 'Legal Document'}</div>
+                        <div class="evidence-snippet">${this.truncateText(item.content, 150)}</div>
+                        <div class="evidence-relevance">${Math.round(item.similarity * 100)}% relevant</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        return evidenceEl;
     }
 
     showTypingIndicator() {
@@ -242,10 +257,11 @@ class ChatPage {
                     <span></span>
                     <span></span>
                 </div>
+                <span style="margin-left: 0.5rem; color: #64748b;">AI is thinking...</span>
             </div>
         `;
         typingEl.id = 'typingIndicator';
-        this.chatMessages?.appendChild(typingEl);
+        this.elements.chatMessages?.appendChild(typingEl);
         this.scrollToBottom();
     }
 
@@ -261,126 +277,203 @@ class ChatPage {
     }
 
     scrollToBottom() {
-        if (this.chatMessages) {
-            this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+        if (this.elements.chatMessages) {
+            this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
         }
     }
 
-    toggleSidebar() {
-        if (window.innerWidth <= 768) {
-            this.sidebar?.classList.toggle('visible');
-        } else {
-            this.sidebar?.classList.toggle('hidden');
-        }
-    }
-
-    async clearConversation() {
-        if (this.conversationId) {
-            try {
+    async clearChat() {
+        try {
+            // Clear conversation on server if exists
+            if (this.conversationId) {
                 await this.api.deleteConversation(this.conversationId);
-            } catch (error) {
-                console.error('Delete conversation error:', error);
             }
+            
+            // Reset local state
+            this.conversationId = null;
+            this.messages = [];
+            
+            // Clear UI
+            if (this.elements.chatMessages) {
+                this.elements.chatMessages.innerHTML = `
+                    <div class="welcome-message">
+                        <div class="welcome-avatar">
+                            <i class="fas fa-scale-balanced"></i>
+                        </div>
+                        <h2>Legal AI Assistant</h2>
+                        <p>Ask me anything about legal matters, contract analysis, or risk assessment. Upload a document for context-aware responses.</p>
+                        
+                        <div class="suggested-questions">
+                            <button class="suggestion-btn" data-question="What are common contract risks I should be aware of?">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                What are common contract risks I should be aware of?
+                            </button>
+                            <button class="suggestion-btn" data-question="Explain liability clauses in simple terms">
+                                <i class="fas fa-shield-alt"></i>
+                                Explain liability clauses in simple terms
+                            </button>
+                            <button class="suggestion-btn" data-question="How can I protect my intellectual property?">
+                                <i class="fas fa-lightbulb"></i>
+                                How can I protect my intellectual property?
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            console.log('✅ Chat cleared successfully');
+            
+        } catch (error) {
+            console.error('❌ Clear chat error:', error);
         }
-        
-        this.startNewConversation();
     }
 
-    startNewConversation() {
-        this.conversationId = null;
-        this.messages = [];
+    // Document Context Management
+    setDocumentContext(documentData) {
+        this.documentContext = documentData;
         
-        if (this.chatMessages) {
-            this.chatMessages.innerHTML = `
-                <div class="welcome-message">
-                    <div class="welcome-icon">
-                        <i class="fas fa-balance-scale"></i>
-                    </div>
-                    <h2>Welcome to Legal AI Assistant</h2>
-                    <p>Ask me anything about your legal documents, contract terms, or risk assessments.</p>
-                    <div class="suggested-questions">
-                        <button class="suggestion-btn" data-question="What are the main risks in my contract?">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            What are the main risks in my contract?
-                        </button>
-                        <button class="suggestion-btn" data-question="Explain this liability clause">
-                            <i class="fas fa-shield-alt"></i>
-                            Explain this liability clause
-                        </button>
-                        <button class="suggestion-btn" data-question="How can I reduce legal risks?">
-                            <i class="fas fa-lightbulb"></i>
-                            How can I reduce legal risks?
-                        </button>
-                    </div>
+        if (this.elements.contextIndicator && this.elements.contextFilename) {
+            this.elements.contextFilename.textContent = `Context: ${documentData.filename}`;
+            this.elements.contextIndicator.style.display = 'block';
+        }
+        
+        // Update recent docs button to show active state
+        if (this.elements.recentDocsBtn) {
+            this.elements.recentDocsBtn.classList.add('active');
+        }
+        
+        console.log('✅ Document context set:', documentData.filename);
+    }
+
+    removeDocumentContext() {
+        this.documentContext = null;
+        
+        if (this.elements.contextIndicator) {
+            this.elements.contextIndicator.style.display = 'none';
+        }
+        
+        if (this.elements.recentDocsBtn) {
+            this.elements.recentDocsBtn.classList.remove('active');
+        }
+        
+        console.log('✅ Document context removed');
+    }
+
+    // Recent Documents Management
+    loadRecentDocuments() {
+        try {
+            const recentAnalyses = [];
+            
+            // Load from localStorage
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.includes('analysis')) {
+                    try {
+                        const data = JSON.parse(localStorage.getItem(key));
+                        if (data && data.filename && data.timestamp) {
+                            recentAnalyses.push(data);
+                        }
+                    } catch (e) {
+                        // Skip invalid entries
+                    }
+                }
+            }
+            
+            // Sort by timestamp (newest first)
+            this.recentDocuments = recentAnalyses
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                .slice(0, 10); // Keep only last 10
+            
+            console.log(`✅ Loaded ${this.recentDocuments.length} recent documents`);
+            
+        } catch (error) {
+            console.error('❌ Load recent documents error:', error);
+            this.recentDocuments = [];
+        }
+    }
+
+    toggleRecentDocsDropup() {
+        if (!this.elements.recentUploadsDropup) return;
+        
+        const isVisible = this.elements.recentUploadsDropup.style.display !== 'none';
+        
+        if (isVisible) {
+            this.hideRecentDocsDropup();
+        } else {
+            this.showRecentDocsDropup();
+        }
+    }
+
+    showRecentDocsDropup() {
+        if (!this.elements.recentUploadsDropup || !this.elements.recentDocsList) return;
+        
+        // Refresh recent documents
+        this.loadRecentDocuments();
+        
+        // Populate the list
+        this.renderRecentDocuments();
+        
+        // Show dropup
+        this.elements.recentUploadsDropup.style.display = 'block';
+        
+        console.log('✅ Recent docs dropup shown');
+    }
+
+    hideRecentDocsDropup() {
+        if (this.elements.recentUploadsDropup) {
+            this.elements.recentUploadsDropup.style.display = 'none';
+        }
+    }
+
+    renderRecentDocuments() {
+        if (!this.elements.recentDocsList) return;
+        
+        if (this.recentDocuments.length === 0) {
+            this.elements.recentDocsList.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #64748b;">
+                    <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+                    <p>No recent documents found.</p>
+                    <p style="font-size: 0.875rem;">Upload a document to get started!</p>
                 </div>
             `;
+            return;
         }
-    }
-
-    loadInitialContext() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const filename = urlParams.get('filename');
-
-        if (filename) {
-            this.loadDocumentFromStorage(filename);
-        } else {
-            this.showAddContextUI();
-        }
-    }
-
-    loadDocumentFromStorage(filename) {
-        try {
-            const analysisData = localStorage.getItem('latest_analysis');
-            if (analysisData) {
-                const data = JSON.parse(analysisData);
-                if (data.filename === filename) {
-                    this.documentContext = {
-                        filename: data.filename,
-                        ocr: data.ocr,
-                        summary: data.analysis?.summary_200w
-                    };
-                    this.updateDocumentContextUI();
-                } else {
-                    this.showAddContextUI("Specified document not found. You can still ask general questions or add a different document.");
-                }
-            } else {
-                this.showAddContextUI("No document context found. You can ask general legal questions.");
-            }
-        } catch (error) {
-            console.error('Load document context error:', error);
-            this.showAddContextUI("Error loading document context.");
-        }
-    }
-
-    updateDocumentContextUI() {
-        if (!this.documentContext || !this.documentContextContainer) return;
         
-        this.documentContextContainer.innerHTML = `
-            <div class="document-info">
-                <div class="document-icon">
-                    <i class="fas fa-file-contract"></i>
+        this.elements.recentDocsList.innerHTML = this.recentDocuments
+            .map(doc => `
+                <div class="recent-doc-item" data-filename="${doc.filename}">
+                    <div class="doc-icon">
+                        <i class="fas fa-file-contract"></i>
+                    </div>
+                    <div class="doc-details">
+                        <div class="doc-filename">${this.truncateText(doc.filename, 40)}</div>
+                        <div class="doc-timestamp">${this.formatTimestamp(doc.timestamp)}</div>
+                    </div>
                 </div>
-                <div class="document-details">
-                    <h4>${this.documentContext.filename}</h4>
-                    <p>Document loaded and ready for context-aware responses</p>
-                </div>
-            </div>
-        `;
+            `).join('');
+        
+        // Add click handlers
+        this.elements.recentDocsList.querySelectorAll('.recent-doc-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const filename = item.dataset.filename;
+                const docData = this.recentDocuments.find(doc => doc.filename === filename);
+                if (docData) {
+                    this.setDocumentContext(docData);
+                    this.hideRecentDocsDropup();
+                }
+            });
+        });
     }
 
-    showAddContextUI(message = "Ask general legal questions, or add a document for context-aware chat.") {
-        if (!this.documentContextContainer) return;
-        this.documentContextContainer.innerHTML = `
-            <div class="add-context">
-                <p>${message}</p>
-                <button class="btn btn-secondary" id="addContextBtn">Add Document</button>
-            </div>
-        `;
-        const addContextBtn = DOM.id('addContextBtn');
-        if (addContextBtn) {
-            addContextBtn.addEventListener('click', () => {
-                window.location.href = 'upload.html';
-            });
+    handleOutsideClick(e) {
+        if (!this.elements.recentUploadsDropup) return;
+        
+        const isDropupVisible = this.elements.recentUploadsDropup.style.display !== 'none';
+        const isClickInsideDropup = this.elements.recentUploadsDropup.contains(e.target);
+        const isClickOnButton = this.elements.recentDocsBtn?.contains(e.target);
+        
+        if (isDropupVisible && !isClickInsideDropup && !isClickOnButton) {
+            this.hideRecentDocsDropup();
         }
     }
 
@@ -388,31 +481,70 @@ class ChatPage {
         const file = e.target.files[0];
         if (!file) return;
         
-        this.addMessage('bot', `I've received your file "${file.name}". Please upload it through the main upload page for full analysis, then return here for document-specific questions.`);
+        try {
+            this.showLoading('Uploading and analyzing document...');
+            
+            // Here you would integrate with your upload API
+            // For now, just show a message
+            this.addMessage('bot', `I've received your file "${file.name}". Please use the main upload page for full document analysis, then return here for context-aware questions.`);
+            
+        } catch (error) {
+            console.error('❌ File upload error:', error);
+            this.addMessage('bot', 'Sorry, I encountered an error uploading your file. Please try again.');
+        } finally {
+            this.hideLoading();
+            e.target.value = ''; // Clear file input
+        }
+    }
+
+    showLoading(message = 'Processing...') {
+        if (this.elements.loadingOverlay) {
+            this.elements.loadingOverlay.querySelector('p').textContent = message;
+            this.elements.loadingOverlay.style.display = 'flex';
+        }
+    }
+
+    hideLoading() {
+        if (this.elements.loadingOverlay) {
+            this.elements.loadingOverlay.style.display = 'none';
+        }
+    }
+
+    // Utility Methods
+    truncateText(text, maxLength) {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+    }
+
+    formatTimestamp(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        
+        return date.toLocaleDateString();
     }
 
     showError(message) {
         console.error('Chat error:', message);
-        // Simple error display
-        const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = `
-            position: fixed; top: 100px; left: 50%; transform: translateX(-50%);
-            background: #fee; border: 1px solid #fcc; color: #c33;
-            padding: 1rem; border-radius: 6px; z-index: 1000;
-        `;
-        errorDiv.textContent = message;
-        document.body.appendChild(errorDiv);
-        
-        setTimeout(() => errorDiv.remove(), 5000);
+        // You could implement a toast notification here
+        this.addMessage('bot', `System Error: ${message}`);
     }
 }
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     try {
-        window.chatPage = new ChatPage();
-        console.log('✅ Chat page initialized');
+        window.legalChatPage = new LegalChatPage();
+        console.log('✅ Legal Chat page initialized');
     } catch (error) {
-        console.error('❌ Failed to initialize chat page:', error);
+        console.error('❌ Failed to initialize legal chat page:', error);
     }
 });

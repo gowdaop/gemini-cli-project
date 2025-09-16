@@ -40,6 +40,10 @@ services:
       - VERTEX_MAX_TOKENS=8192
       - VERTEX_TEMPERATURE=0.1
       
+      # ── Google Custom Search API (NEW) ────────────────
+      - VERTEX_SEARCH_ENGINE_ID=legal-document-search_1757848376569
+      - VERTEX_SEARCH_PROJECT_ID=legal-470717
+      
       # ── Milvus Vector Database ─────────────────────────
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
@@ -252,7 +256,7 @@ services:
       - production
 
   ########################################################
-  # 9. Frontend Services (MOVED UNDER services: section)
+  # 9. Frontend Services
   ########################################################
   
   # Development Frontend (Hot reload with live-server)
@@ -331,3 +335,4 @@ networks:
       config:
         - subnet: 172.20.0.0/16
           gateway: 172.20.0.1
+# --- IGNORE ---
