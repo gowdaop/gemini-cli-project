@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     MILVUS_PORT: int = 19530
     MILVUS_COLLECTION: str = "legal_chunks_v1"
     MILVUS_TIMEOUT: int = 30
+    
+    # Enhanced RAG Configuration
+    VERTEX_SEARCH_AVAILABLE: bool = True
+    ASYNC_HTTP_AVAILABLE: bool = True
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
     # HuggingFace Configuration
     HF_MODEL_NAME: str = "law-ai/InLegalBERT"

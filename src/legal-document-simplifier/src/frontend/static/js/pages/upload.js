@@ -229,7 +229,12 @@ class UploadPage {
                     <div class="recent-filename">${item.filename}</div>
                     <div class="recent-timestamp">${new Date(item.timestamp).toLocaleString()}</div>
                 </div>
-                <button class="btn btn-sm btn-outline view-results-btn" data-filename="${item.filename}">View</button>
+                <div class="recent-actions">
+                    <button class="btn btn-sm btn-outline view-results-btn" data-filename="${item.filename}">View</button>
+                    <button class="btn btn-sm btn-danger delete-results-btn" data-filename="${item.filename}">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             `;
             this.recentList.appendChild(itemEl);
         });
@@ -245,6 +250,50 @@ class UploadPage {
                 }
             });
         });
+
+        // Add delete functionality
+        this.recentList.querySelectorAll('.delete-results-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const filename = e.currentTarget.dataset.filename;
+                this.deleteRecentDocument(filename);
+            });
+        });
+    }
+
+    deleteRecentDocument(filename) {
+        if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            // Get current history
+            let history = [];
+            const storedHistory = localStorage.getItem('analysis_history');
+            if (storedHistory) {
+                history = JSON.parse(storedHistory);
+            }
+
+            // Remove the document from history
+            const updatedHistory = history.filter(item => item.filename !== filename);
+            localStorage.setItem('analysis_history', JSON.stringify(updatedHistory));
+
+            // Also remove from latest_analysis if it's the same file
+            const latestAnalysis = localStorage.getItem('latest_analysis');
+            if (latestAnalysis) {
+                const latest = JSON.parse(latestAnalysis);
+                if (latest.filename === filename) {
+                    localStorage.removeItem('latest_analysis');
+                }
+            }
+
+            // Re-render the recent uploads
+            this.renderRecentUploads();
+
+            console.log(`✅ Deleted document: ${filename}`);
+        } catch (error) {
+            console.error('❌ Failed to delete document:', error);
+            alert('Failed to delete document. Please try again.');
+        }
     }
 
     validateFile(file) {

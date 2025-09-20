@@ -20,6 +20,10 @@ pandas
 faiss-cpu
 pymilvus
 
+# Web Search Dependencies
+aiohttp
+google-cloud-discoveryengine
+
 # Database
 sqlalchemy
 alembic

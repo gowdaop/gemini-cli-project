@@ -36,6 +36,13 @@ except ImportError:
     VERTEX_SEARCH_AVAILABLE = False
     discoveryengine = None
 
+# Free web search imports
+try:
+    import aiohttp
+    ASYNC_HTTP_AVAILABLE = True
+except ImportError:
+    ASYNC_HTTP_AVAILABLE = False
+
 from ..schemas.analysis import RAGContextItem
 from ..config import settings
 from .embedding import embed_texts_async
@@ -204,7 +211,7 @@ class VertexAISearchService:
                 content = f"{result.get('title', '')}. {result.get('snippet', '')}"
                 
                 rag_contexts.append(RAGContextItem(
-                    chunk_id=f"vertex_{i}",
+                    chunk_id=i,
                     content=content[:2000],  # Limit content length
                     doc_type="vertex_ai_search_result",
                     jurisdiction="indian_law",
@@ -214,6 +221,128 @@ class VertexAISearchService:
                 ))
             except Exception as e:
                 logger.warning(f"❌ Error converting Vertex AI result {i}: {e}")
+                continue
+        
+        return rag_contexts
+
+
+class FreeWebSearchService:
+    """Free web search service using DuckDuckGo API as fallback"""
+    
+    def __init__(self):
+        self.base_url = "https://api.duckduckgo.com"
+        self.initialized = False
+        self._search_cache = RAGCache(max_size=200, ttl=1800)
+        
+    async def initialize(self):
+        """Initialize free web search service"""
+        if self.initialized:
+            return
+            
+        if not ASYNC_HTTP_AVAILABLE:
+            logger.warning("aiohttp not available - free web search disabled")
+            return
+            
+        try:
+            self.initialized = True
+            logger.info("✅ Free web search service initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize free web search: {e}")
+    
+    async def search_web(self, query: str, num_results: int = 5) -> List[Dict[str, Any]]:
+        """Search using DuckDuckGo API for free web search"""
+        if not self.initialized:
+            await self.initialize()
+            
+        if not self.initialized:
+            logger.warning("Free web search not available - returning empty results")
+            return []
+            
+        # Check cache first
+        cache_key = hashlib.md5(f"free_web_{query}_{num_results}".encode()).hexdigest()
+        cached_result = await self._search_cache.get(cache_key)
+        if cached_result:
+            logger.debug("Returning cached free web search results")
+            return cached_result
+            
+        try:
+            logger.info(f"🔍 Free web search for: '{query[:50]}...'")
+            
+            # Use DuckDuckGo Instant Answer API
+            params = {
+                'q': query,
+                'format': 'json',
+                'no_html': '1',
+                'skip_disambig': '1'
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.base_url, params=params, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        search_results = self._process_duckduckgo_results(data, num_results)
+                        
+                        # Cache results
+                        await self._search_cache.set(cache_key, search_results)
+                        
+                        logger.info(f"✅ Free web search returned {len(search_results)} results")
+                        return search_results
+                    else:
+                        logger.warning(f"Free web search failed with status {response.status}")
+                        return []
+                        
+        except Exception as e:
+            logger.error(f"❌ Free web search failed: {e}")
+            return []
+    
+    def _process_duckduckgo_results(self, data: Dict, num_results: int) -> List[Dict[str, Any]]:
+        """Process DuckDuckGo API results"""
+        search_results = []
+        
+        # Extract abstract and related topics
+        if data.get('Abstract'):
+            search_results.append({
+                'title': data.get('Heading', 'DuckDuckGo Result'),
+                'link': data.get('AbstractURL', ''),
+                'snippet': data.get('Abstract', ''),
+                'displayLink': 'duckduckgo.com',
+                'source': 'duckduckgo_instant'
+            })
+        
+        # Extract related topics
+        related_topics = data.get('RelatedTopics', [])
+        for topic in related_topics[:num_results-1]:
+            if isinstance(topic, dict) and topic.get('Text'):
+                search_results.append({
+                    'title': topic.get('Text', '')[:100] + '...',
+                    'link': topic.get('FirstURL', ''),
+                    'snippet': topic.get('Text', ''),
+                    'displayLink': topic.get('FirstURL', '').split('/')[2] if topic.get('FirstURL') else 'duckduckgo.com',
+                    'source': 'duckduckgo_related'
+                })
+        
+        return search_results[:num_results]
+    
+    def convert_to_rag_context(self, web_results: List[Dict[str, Any]]) -> List[RAGContextItem]:
+        """Convert free web search results to RAG context items"""
+        rag_contexts = []
+        
+        for i, result in enumerate(web_results):
+            try:
+                # Create content from title and snippet
+                content = f"{result.get('title', '')}. {result.get('snippet', '')}"
+                
+                rag_contexts.append(RAGContextItem(
+                    chunk_id=i,
+                    content=content[:2000],  # Limit content length
+                    doc_type="free_web_search_result",
+                    jurisdiction="general",
+                    date=datetime.now().isoformat()[:10],
+                    source_url=result.get('link', ''),
+                    similarity=0.75  # Medium similarity for free web results
+                ))
+            except Exception as e:
+                logger.warning(f"❌ Error converting free web result {i}: {e}")
                 continue
         
         return rag_contexts
@@ -492,6 +621,7 @@ class EnhancedRAGService:
         self.milvus_client = MilvusClient()
         self.vertex_client = VertexAIClient()
         self.web_search_service = VertexAISearchService()
+        self.free_web_search_service = FreeWebSearchService()
         self.initialized = False
     
     async def initialize(self):
@@ -505,6 +635,7 @@ class EnhancedRAGService:
             self.milvus_client.initialize(),
             self.vertex_client.initialize(),
             self.web_search_service.initialize(),
+            self.free_web_search_service.initialize(),
             return_exceptions=True
         )
         
@@ -596,18 +727,35 @@ class EnhancedRAGService:
             return []
     
     async def _get_web_contexts(self, query: str, num_results: int) -> List[RAGContextItem]:
-        """Get contexts from web search"""
+        """Get contexts from web search with GCP and free fallback"""
         try:
             # Enhance query for legal search
             legal_query = self._enhance_query_for_legal_search(query)
             
-            # Perform web search
-            web_results = await self.web_search_service.search_web(legal_query, num_results)
+            web_contexts = []
             
-            # Convert to RAG contexts
-            web_contexts = self.web_search_service.convert_to_rag_context(web_results)
+            # Try GCP Vertex AI Search first
+            try:
+                gcp_results = await self.web_search_service.search_web(legal_query, num_results)
+                if gcp_results:
+                    gcp_contexts = self.web_search_service.convert_to_rag_context(gcp_results)
+                    web_contexts.extend(gcp_contexts)
+                    logger.info(f"🌐 GCP web search returned {len(gcp_contexts)} contexts")
+            except Exception as e:
+                logger.warning(f"GCP web search failed: {e}")
             
-            logger.info(f"🌐 Web search returned {len(web_contexts)} contexts")
+            # If GCP search didn't return enough results, try free web search
+            if len(web_contexts) < num_results // 2:
+                try:
+                    free_results = await self.free_web_search_service.search_web(legal_query, num_results - len(web_contexts))
+                    if free_results:
+                        free_contexts = self.free_web_search_service.convert_to_rag_context(free_results)
+                        web_contexts.extend(free_contexts)
+                        logger.info(f"🌐 Free web search returned {len(free_contexts)} contexts")
+                except Exception as e:
+                    logger.warning(f"Free web search failed: {e}")
+            
+            logger.info(f"🌐 Total web search returned {len(web_contexts)} contexts")
             return web_contexts
             
         except Exception as e:
@@ -699,8 +847,8 @@ class EnhancedRAGService:
         
         summary_context = f"Document Summary: {summary_hint}\n\n" if summary_hint else ""
         
-        # Enhanced prompt that handles both legal and general questions
-        prompt = f"""You are a knowledgeable AI assistant with expertise in law and general knowledge.
+        # Enhanced prompt that handles both legal and general questions with Indian law focus
+        prompt = f"""You are a knowledgeable AI assistant with expertise in Indian law and general knowledge. You specialize in providing clear, accurate answers based on Indian legal framework and current information.
 
 QUESTION: {question}
 
@@ -713,14 +861,16 @@ AVAILABLE EVIDENCE:
 {summary_context}
 
 INSTRUCTIONS:
-1. If this is a legal question, prioritize the legal database evidence and provide comprehensive legal analysis
-2. If this is a general question, use all available sources to provide accurate, current information
-3. Always provide helpful, substantive answers
-4. Use clear, accessible language
-5. If combining legal and general information, clearly distinguish between them
-6. Include practical recommendations where appropriate
+1. For legal questions: Prioritize Indian law context and legal database evidence. Provide comprehensive analysis based on Indian legal framework, citing relevant laws, acts, and precedents where applicable.
+2. For general questions: Use all available sources to provide accurate, current information with Indian context when relevant.
+3. Always provide helpful, substantive answers that are practical and actionable.
+4. Use clear, accessible language that non-lawyers can understand.
+5. If combining legal and general information, clearly distinguish between them.
+6. Include practical recommendations and next steps where appropriate.
+7. When discussing legal matters, always mention that this is general information and recommend consulting with a qualified Indian lawyer for specific legal advice.
+8. For Indian law questions, reference relevant Indian legal acts, sections, and case laws when available.
 
-Provide a thorough, well-structured response:"""
+Provide a thorough, well-structured response with Indian legal context:"""
         
         try:
             answer = await self.vertex_client.generate_text(
@@ -787,52 +937,63 @@ Generate a detailed, informative response:"""
             logger.error(f"Enhanced prompt retry failed: {e}")
             return None
     
-    async def summarize_200w(self, text: str) -> str:
-        """Generate a summary in ≤200 words"""
+    async def summarize_500w_with_recommendations(self, text: str) -> str:
+        """Generate a comprehensive summary with recommendations in ≤500 words"""
         if not text or not text.strip():
             logger.warning("No text provided for summary generation")
             return "No content available for summary."
         
-        logger.info(f"Generating summary for {len(text)} characters")
+        logger.info(f"Generating enhanced summary for {len(text)} characters")
         
-        prompt = f"""You are a legal document assistant. Create a concise summary of this legal document in exactly 200 words or fewer.
+        prompt = f"""You are a legal document assistant specializing in Indian law. Create a comprehensive summary of this legal document in exactly 500 words or fewer, followed by practical recommendations.
 
+SUMMARY SECTION (400 words max):
 Focus on:
 1. Main purpose and type of document
-2. Key parties involved
-3. Primary obligations and rights
+2. Key parties involved and their roles
+3. Primary obligations and rights of each party
 4. Important terms and conditions
 5. Notable risks or considerations
+6. Governing law and jurisdiction
+7. Key financial terms and payment obligations
+8. Termination and dispute resolution clauses
 
-Use simple, non-technical language.
+RECOMMENDATIONS SECTION (100 words max):
+Provide practical recommendations:
+1. Key areas requiring legal review
+2. Potential risks to watch out for
+3. Suggested next steps
+4. Important clauses to negotiate or clarify
+
+Use simple, non-technical language and focus on Indian legal context.
 
 Document text:
-{text[:4000]}...
+{text[:6000]}...
 
-Summary (≤200 words):"""
+Comprehensive Summary with Recommendations (≤500 words):"""
         
         try:
             summary = await self.vertex_client.generate_text(
                 prompt=prompt,
-                max_tokens=300,
+                max_tokens=600,  # Increased for longer summary
                 temperature=0.1
             )
             
             if not summary or not summary.strip():
                 logger.warning("Vertex AI returned empty summary")
-                return self._create_fallback_summary(text)
+                return self._create_fallback_summary_with_recommendations(text)
             
             # Ensure word limit
             words = summary.split()
-            if len(words) > 200:
-                summary = " ".join(words[:200]) + "..."
+            if len(words) > 500:
+                summary = " ".join(words[:500]) + "..."
             
-            logger.info(f"Generated summary: {len(summary)} chars, {len(words)} words")
+            logger.info(f"Generated enhanced summary: {len(summary)} chars, {len(words)} words")
             return summary
             
         except Exception as e:
             logger.error(f"Summary generation failed: {e}", exc_info=True)
-            return self._create_fallback_summary(text)
+            return self._create_fallback_summary_with_recommendations(text)
     
     def _create_fallback_summary(self, text: str) -> str:
         """Create a simple fallback summary"""
@@ -843,6 +1004,25 @@ Summary (≤200 words):"""
         sample_text = " ".join(words[:150])
         return f"This legal document contains {len(words)} words covering contractual terms and conditions. {sample_text}..."
     
+    def _create_fallback_summary_with_recommendations(self, text: str) -> str:
+        """Create a fallback summary with recommendations"""
+        words = text.split()
+        word_count = len(words)
+        
+        if word_count <= 200:
+            return f"This legal document contains {word_count} words covering various contractual terms and conditions. {text}\n\nRECOMMENDATIONS: Please review this document carefully and consider consulting with a qualified Indian lawyer for specific legal advice regarding your situation."
+        
+        sample_text = " ".join(words[:200])
+        return f"""SUMMARY: This legal document contains {word_count} words covering various contractual terms and conditions. The document appears to establish rights, obligations, and procedures for the parties involved. Key areas typically include liability, termination, payment terms, and governing law. {sample_text}...
+
+RECOMMENDATIONS: 
+1. Review all liability and indemnification clauses carefully
+2. Check payment terms and deadlines
+3. Understand termination conditions and notice requirements
+4. Verify governing law and jurisdiction clauses
+5. Consider consulting with a qualified Indian lawyer for specific legal advice
+6. Ensure all parties understand their rights and obligations"""
+    
     async def get_service_stats(self) -> Dict[str, Any]:
         """Get comprehensive service statistics"""
         return {
@@ -850,11 +1030,14 @@ Summary (≤200 words):"""
             "milvus_connected": self.milvus_client.connected,
             "vertex_initialized": self.vertex_client.initialized,
             "web_search_initialized": self.web_search_service.initialized,
+            "free_web_search_initialized": self.free_web_search_service.initialized,
             "collection_name": getattr(settings, 'MILVUS_COLLECTION', 'unknown'),
             "embedding_dimension": 768,
             "dependencies": {
                 "pymilvus_available": PYMILVUS_AVAILABLE,
                 "google_search_available": GOOGLE_SEARCH_AVAILABLE,
+                "vertex_search_available": VERTEX_SEARCH_AVAILABLE,
+                "async_http_available": ASYNC_HTTP_AVAILABLE,
                 "requests_available": True,
                 "http_client": True
             }
@@ -885,6 +1068,12 @@ async def summarize_200w(text: str) -> str:
     """Generate a summary in ≤200 words"""
     service = await get_rag_service()
     return await service.summarize_200w(text)
+
+
+async def summarize_500w_with_recommendations(text: str) -> str:
+    """Generate a comprehensive summary with recommendations in ≤500 words"""
+    service = await get_rag_service()
+    return await service.summarize_500w_with_recommendations(text)
 
 
 async def answer_with_vertex(question: str, contexts: List[RAGContextItem], summary_hint: Optional[str] = None) -> str:

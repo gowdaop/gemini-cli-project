@@ -46,8 +46,8 @@ class LegalChatPage {
             
             // Recent docs elements
             recentDocsBtn: DOM.id('recentDocsBtn'),
-            recentUploadsDropup: DOM.id('recentUploadsDropup'),
-            closeDropupBtn: DOM.id('closeDropupBtn'),
+            recentDocsDropdown: DOM.id('recentDocsDropdown'),
+            recentDocsContent: DOM.id('recentDocsContent'),
             recentDocsList: DOM.id('recentDocsList'),
             
             // Upload elements
@@ -78,8 +78,7 @@ class LegalChatPage {
         this.elements.removeContextBtn?.addEventListener('click', () => this.removeDocumentContext());
         
         // Recent documents
-        this.elements.recentDocsBtn?.addEventListener('click', () => this.toggleRecentDocsDropup());
-        this.elements.closeDropupBtn?.addEventListener('click', () => this.hideRecentDocsDropup());
+        this.elements.recentDocsBtn?.addEventListener('click', () => this.toggleRecentDocsDropdown());
         
         // File upload
         this.elements.uploadBtn?.addEventListener('click', () => this.elements.fileInput?.click());
@@ -105,7 +104,7 @@ class LegalChatPage {
     }
 
     setupTextareaAutoResize() {
-        if (!this.elements.chatInput) return;
+        if (!this.elements.chatInput) return; 
         
         this.elements.chatInput.addEventListener('input', () => {
             this.elements.chatInput.style.height = 'auto';
@@ -234,15 +233,6 @@ class LegalChatPage {
                 <i class="fas fa-book-open"></i>
                 <span>Legal References (${evidence.length})</span>
             </div>
-            <div class="evidence-items">
-                ${evidence.slice(0, 3).map(item => `
-                    <div class="evidence-item">
-                        <div class="evidence-source">${item.doc_type || 'Legal Document'}</div>
-                        <div class="evidence-snippet">${this.truncateText(item.content, 150)}</div>
-                        <div class="evidence-relevance">${Math.round(item.similarity * 100)}% relevant</div>
-                    </div>
-                `).join('')}
-            </div>
         `;
         return evidenceEl;
     }
@@ -278,7 +268,10 @@ class LegalChatPage {
 
     scrollToBottom() {
         if (this.elements.chatMessages) {
-            this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+            // Use a small timeout to ensure the DOM has updated before scrolling
+            setTimeout(() => {
+                this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+            }, 0);
         }
     }
 
@@ -392,20 +385,20 @@ class LegalChatPage {
         }
     }
 
-    toggleRecentDocsDropup() {
-        if (!this.elements.recentUploadsDropup) return;
+    toggleRecentDocsDropdown() {
+        if (!this.elements.recentDocsContent) return;
         
-        const isVisible = this.elements.recentUploadsDropup.style.display !== 'none';
+        const isVisible = this.elements.recentDocsContent.style.display !== 'none';
         
         if (isVisible) {
-            this.hideRecentDocsDropup();
+            this.hideRecentDocsDropdown();
         } else {
-            this.showRecentDocsDropup();
+            this.showRecentDocsDropdown();
         }
     }
 
-    showRecentDocsDropup() {
-        if (!this.elements.recentUploadsDropup || !this.elements.recentDocsList) return;
+    showRecentDocsDropdown() {
+        if (!this.elements.recentDocsContent || !this.elements.recentDocsList) return;
         
         // Refresh recent documents
         this.loadRecentDocuments();
@@ -413,15 +406,15 @@ class LegalChatPage {
         // Populate the list
         this.renderRecentDocuments();
         
-        // Show dropup
-        this.elements.recentUploadsDropup.style.display = 'block';
+        // Show dropdown
+        this.elements.recentDocsContent.style.display = 'block';
         
-        console.log('✅ Recent docs dropup shown');
+        console.log('✅ Recent docs dropdown shown');
     }
 
-    hideRecentDocsDropup() {
-        if (this.elements.recentUploadsDropup) {
-            this.elements.recentUploadsDropup.style.display = 'none';
+    hideRecentDocsDropdown() {
+        if (this.elements.recentDocsContent) {
+            this.elements.recentDocsContent.style.display = 'none';
         }
     }
 
@@ -459,21 +452,20 @@ class LegalChatPage {
                 const docData = this.recentDocuments.find(doc => doc.filename === filename);
                 if (docData) {
                     this.setDocumentContext(docData);
-                    this.hideRecentDocsDropup();
+                    this.hideRecentDocsDropdown();
                 }
             });
         });
     }
 
     handleOutsideClick(e) {
-        if (!this.elements.recentUploadsDropup) return;
+        if (!this.elements.recentDocsDropdown) return;
         
-        const isDropupVisible = this.elements.recentUploadsDropup.style.display !== 'none';
-        const isClickInsideDropup = this.elements.recentUploadsDropup.contains(e.target);
-        const isClickOnButton = this.elements.recentDocsBtn?.contains(e.target);
+        const isDropdownVisible = this.elements.recentDocsContent.style.display !== 'none';
+        const isClickInsideDropdown = this.elements.recentDocsDropdown.contains(e.target);
         
-        if (isDropupVisible && !isClickInsideDropup && !isClickOnButton) {
-            this.hideRecentDocsDropup();
+        if (isDropdownVisible && !isClickInsideDropdown) {
+            this.hideRecentDocsDropdown();
         }
     }
 

@@ -96,10 +96,145 @@ class ResultsPage {
     // overall risk badge
     this.setOverallRiskLevel(riskCounts);
 
-    // summary
+    // summary with enhanced formatting
+    this.populateSummary();
+  }
+
+  populateSummary() {
     const summaryEl = DOM.id('documentSummary');
-    if (summaryEl) {
-      summaryEl.textContent = this.analysisData.analysis?.summary_200w || 'No summary available.';
+    if (!summaryEl) return;
+
+    const summaryText = this.analysisData.analysis?.summary_200w || 'No summary available.';
+    
+    // Parse the summary to separate SUMMARY and RECOMMENDATIONS sections
+    const { summarySection, recommendationsSection } = this.parseSummarySections(summaryText);
+    
+    // Create enhanced HTML structure
+    summaryEl.innerHTML = `
+      <div class="summary-content">
+        ${summarySection ? `
+          <div class="summary-section">
+            <div class="section-header">
+              <i class="fas fa-file-alt"></i>
+              <h4>Document Summary</h4>
+            </div>
+            <div class="section-content">
+              ${this.formatSummaryText(summarySection)}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${recommendationsSection ? `
+          <div class="recommendations-section">
+            <div class="section-header">
+              <i class="fas fa-lightbulb"></i>
+              <h4>Key Recommendations</h4>
+            </div>
+            <div class="section-content">
+              ${this.formatRecommendationsText(recommendationsSection)}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${!summarySection && !recommendationsSection ? `
+          <div class="summary-fallback">
+            <p>${summaryText}</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  parseSummarySections(text) {
+    if (!text) return { summarySection: null, recommendationsSection: null };
+
+    // Look for explicit section markers
+    const summaryMatch = text.match(/SUMMARY[:\s]*(.*?)(?=RECOMMENDATIONS|$)/is);
+    const recommendationsMatch = text.match(/RECOMMENDATIONS[:\s]*(.*?)$/is);
+
+    if (summaryMatch && recommendationsMatch) {
+      return {
+        summarySection: summaryMatch[1].trim(),
+        recommendationsSection: recommendationsMatch[1].trim()
+      };
+    }
+
+    // If no explicit markers, try to split on common patterns
+    const lines = text.split('\n');
+    let summaryLines = [];
+    let recommendationsLines = [];
+    let currentSection = 'summary';
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      if (trimmedLine.match(/^(recommendations?|key recommendations?|suggestions?)/i)) {
+        currentSection = 'recommendations';
+        continue;
+      }
+      
+      if (trimmedLine) {
+        if (currentSection === 'summary') {
+          summaryLines.push(trimmedLine);
+        } else {
+          recommendationsLines.push(trimmedLine);
+        }
+      }
+    }
+
+    return {
+      summarySection: summaryLines.length > 0 ? summaryLines.join(' ') : null,
+      recommendationsSection: recommendationsLines.length > 0 ? recommendationsLines.join(' ') : null
+    };
+  }
+
+  formatSummaryText(text) {
+    if (!text) return '';
+    
+    // Clean up the text
+    let formatted = text.trim();
+    
+    // Add paragraph breaks for better readability
+    formatted = formatted.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n\n');
+    
+    // Split into paragraphs and wrap in <p> tags
+    const paragraphs = formatted.split('\n\n').filter(p => p.trim());
+    
+    return paragraphs.map(p => `<p>${p.trim()}</p>`).join('');
+  }
+
+  formatRecommendationsText(text) {
+    if (!text) return '';
+    
+    // Clean up the text
+    let formatted = text.trim();
+    
+    // Check if it's already a numbered list
+    if (formatted.match(/^\d+\./)) {
+      // Split by numbered items and format as list
+      const items = formatted.split(/(?=^\d+\.)/m).filter(item => item.trim());
+      
+      return `
+        <ol class="recommendations-list">
+          ${items.map(item => {
+            const cleaned = item.replace(/^\d+\.\s*/, '').trim();
+            return `<li>${cleaned}</li>`;
+          }).join('')}
+        </ol>
+      `;
+    } else {
+      // Try to split by common list patterns
+      const lines = formatted.split('\n').filter(line => line.trim());
+      
+      if (lines.length > 1) {
+        return `
+          <ul class="recommendations-list">
+            ${lines.map(line => `<li>${line.trim()}</li>`).join('')}
+          </ul>
+        `;
+      } else {
+        return `<p>${formatted}</p>`;
+      }
     }
   }
 
@@ -274,6 +409,27 @@ showRecommendations() {
     return div;
   }
 
+  showToast(message, type = 'info') {
+    const toastContainer = DOM.id('toastContainer') || document.body;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+      <div class="toast-content">
+        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+        <span>${message}</span>
+      </div>
+    `;
+    
+    toastContainer.appendChild(toast);
+    
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 3000);
+  }
+
   /* ---------- 7.  MODAL & EVENTS ---------- */
   setupModal() { /* implement open/close logic here */ }
   showClauseModal(clause, risk) { /* fill and display modal */ }
@@ -282,9 +438,13 @@ showRecommendations() {
     // copy summary
     const copyBtn = DOM.id('copySummary');
     if (copyBtn) copyBtn.addEventListener('click', () => {
-      navigator.clipboard.writeText(
-        this.analysisData.analysis?.summary_200w || ''
-      ).then(() => alert('Summary copied'));
+      const summaryText = this.analysisData.analysis?.summary_200w || '';
+      navigator.clipboard.writeText(summaryText).then(() => {
+        // Show a better notification
+        this.showToast('Summary copied to clipboard', 'success');
+      }).catch(() => {
+        this.showToast('Failed to copy summary', 'error');
+      });
     });
 
     // filters

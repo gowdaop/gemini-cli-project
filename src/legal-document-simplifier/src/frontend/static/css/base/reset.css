@@ -303,6 +303,134 @@
     color: var(--secondary-700);
 }
 
+/* Enhanced Summary Sections */
+.summary-section, .recommendations-section {
+    margin-bottom: var(--spacing-6);
+    padding: var(--spacing-6);
+    background: #f8fafc;
+    border-radius: 12px;
+    border-left: 4px solid var(--primary-500);
+}
+
+.recommendations-section {
+    background: #fef3c7;
+    border-left-color: var(--warning-500);
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    margin-bottom: var(--spacing-4);
+    padding-bottom: var(--spacing-3);
+    border-bottom: 1px solid var(--secondary-200);
+}
+
+.section-header i {
+    font-size: var(--font-size-lg);
+    color: var(--primary-600);
+}
+
+.recommendations-section .section-header i {
+    color: var(--warning-600);
+}
+
+.section-header h4 {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--secondary-900);
+    margin: 0;
+}
+
+.section-content {
+    color: var(--secondary-700);
+    line-height: 1.7;
+}
+
+.section-content p {
+    margin-bottom: var(--spacing-4);
+    font-size: var(--font-size-base);
+}
+
+.section-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* Recommendations Lists */
+.recommendations-list {
+    margin: 0;
+    padding-left: var(--spacing-6);
+}
+
+.recommendations-list li {
+    margin-bottom: var(--spacing-3);
+    font-size: var(--font-size-base);
+    line-height: 1.6;
+}
+
+.recommendations-list li:last-child {
+    margin-bottom: 0;
+}
+
+/* Toast Notifications */
+.toast {
+    position: fixed;
+    top: var(--spacing-4);
+    right: var(--spacing-4);
+    background: white;
+    border: 1px solid var(--secondary-200);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: var(--spacing-4);
+    z-index: 1000;
+    animation: slideInRight 0.3s ease-out;
+}
+
+.toast-success {
+    border-left: 4px solid var(--success-500);
+}
+
+.toast-error {
+    border-left: 4px solid var(--error-500);
+}
+
+.toast-info {
+    border-left: 4px solid var(--primary-500);
+}
+
+.toast-content {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.toast-content i {
+    font-size: var(--font-size-lg);
+}
+
+.toast-success .toast-content i {
+    color: var(--success-600);
+}
+
+.toast-error .toast-content i {
+    color: var(--error-600);
+}
+
+.toast-info .toast-content i {
+    color: var(--primary-600);
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
 /* Analysis Section */
 .analysis-section {
     margin-bottom: var(--spacing-8);

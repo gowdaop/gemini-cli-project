@@ -56,12 +56,9 @@ class HeaderComponent {
           <div class="nav-menu">
             <a href="${homePath}" class="nav-link" data-page="home">Home</a>
             <a href="${uploadPath}" class="nav-link" data-page="upload">Upload</a>
-            <a href="${chatPath}" class.nav-link" data-page="chat">Chat</a>
+            <a href="${chatPath}" class="nav-link" data-page="chat">Chat</a>
           </div>
-          <div class="nav-actions">
-            <button class="btn btn-outline" id="loginBtn">Login</button>
-            <button class="btn btn-primary" id="signupBtn">Get Started</button>
-          </div>
+          
           <button class="nav-toggle" id="navToggle">
             <span class="nav-toggle-bar"></span>
             <span class="nav-toggle-bar"></span>
@@ -95,21 +92,7 @@ class HeaderComponent {
       }
     });
 
-    // Login button
-    const loginBtn = document.getElementById('loginBtn');
-    if (loginBtn) {
-      loginBtn.addEventListener('click', () => {
-        this.handleLogin();
-      });
-    }
-
-    // Signup button
-    const signupBtn = document.getElementById('signupBtn');
-    if (signupBtn) {
-      signupBtn.addEventListener('click', () => {
-        this.handleSignup();
-      });
-    }
+    
 
     // Brand logo click
     const navBrand = document.querySelector('.nav-brand');
@@ -169,28 +152,7 @@ class HeaderComponent {
     });
   }
 
-  handleLogin() {
-    // For now, just show a placeholder
-    if (window.showToast) {
-      window.showToast('Login functionality coming soon!', 'info');
-    } else {
-      alert('Login functionality coming soon!');
-    }
-    
-    // TODO: Implement actual login functionality
-    // This could open a modal or redirect to a login page
-  }
-
-  handleSignup() {
-    // For now, just show a placeholder
-    if (window.showToast) {
-      window.showToast('Sign up functionality coming soon!', 'info');
-    } else {
-      alert('Sign up functionality coming soon!');
-    }
-    
-    // TODO: Implement actual signup functionality
-  }
+  
 
   setupScrollBehavior() {
     let lastScrollTop = 0;

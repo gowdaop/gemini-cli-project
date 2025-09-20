@@ -413,7 +413,7 @@ class EnhancedChatService:
         """Enhanced document context search"""
         relevant_blocks = []
         question_lower = question.lower()
-        question_words = [word for word in question_lower.split() if len(word) > 3]
+        question_words = [word for word in question_lower.split()]
         
         for i, block in enumerate(document.blocks):
             block_lower = block.text.lower()
@@ -443,7 +443,7 @@ class EnhancedChatService:
                 similarity = min(0.9, relevance_score / (len(question_words) + 2))
                 
                 relevant_blocks.append(RAGContextItem(
-                    chunk_id=f"doc_{i}",
+                    chunk_id=i,
                     content=block.text,
                     doc_type="current_document",
                     jurisdiction="current",

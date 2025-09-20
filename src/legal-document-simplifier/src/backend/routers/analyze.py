@@ -75,9 +75,9 @@ async def analyze_document(request: AnalyzeRequest):
                 risks = await score_risks_parallel(clauses, min(request.top_k, 10))
                 logger.info(f"Assessed {len(risks)} risk items")
                 
-                # Step 3: Generate summary
-                logger.debug("Generating document summary...")
-                summary = await generate_summary(request.ocr.full_text)
+                # Step 3: Generate enhanced summary with recommendations
+                logger.debug("Generating enhanced document summary with recommendations...")
+                summary = await generate_enhanced_summary(request.ocr.full_text)
         except asyncio.TimeoutError:
             raise HTTPException(
                 status_code=status.HTTP_408_REQUEST_TIMEOUT,
@@ -91,7 +91,7 @@ async def analyze_document(request: AnalyzeRequest):
         response = AnalyzeResponse(
             clauses=clauses,
             risks=risks,
-            summary_200w=summary
+            summary_200w=summary  # This will now contain the enhanced summary with recommendations
         )
         
         logger.info("Document analysis completed successfully")
@@ -471,6 +471,40 @@ async def generate_summary(full_text: str) -> str:
         logger.error(f"Summary generation failed: {e}", exc_info=True)
         return create_fallback_summary(full_text)
 
+
+async def generate_enhanced_summary(full_text: str) -> str:
+    """
+    Enhanced summary generation with recommendations (500 words)
+    """
+    try:
+        if not full_text or len(full_text.strip()) < 10:
+            return create_fallback_summary_with_recommendations(full_text)
+        
+        logger.info(f"Starting enhanced summary generation for {len(full_text)} characters of text")
+        logger.debug(f"Text preview: {full_text[:200]}...")
+        
+        # Use RAG service to generate enhanced summary
+        summary = await rag.summarize_500w_with_recommendations(full_text)
+        
+        # Validate summary result
+        if not summary or not summary.strip():
+            logger.warning("Empty enhanced summary returned from RAG service")
+            return create_fallback_summary_with_recommendations(full_text)
+        
+        # Check word count
+        word_count = len(summary.split())
+        if word_count > 500:
+            logger.warning(f"Enhanced summary too long ({word_count} words), truncating")
+            words = summary.split()[:500]
+            summary = " ".join(words)
+        
+        logger.info(f"Generated enhanced summary: {len(summary)} characters, {word_count} words")
+        return summary.strip()
+        
+    except Exception as e:
+        logger.error(f"Enhanced summary generation failed: {e}", exc_info=True)
+        return create_fallback_summary_with_recommendations(full_text)
+
 def create_fallback_summary(full_text: str) -> str:
     """
     Enhanced fallback summary generation
@@ -489,6 +523,42 @@ def create_fallback_summary(full_text: str) -> str:
     summary = " ".join(summary_words)
     
     return f"This legal document contains {word_count} words covering various contractual terms and conditions. {summary}..."
+
+
+def create_fallback_summary_with_recommendations(full_text: str) -> str:
+    """
+    Enhanced fallback summary generation with recommendations
+    """
+    if not full_text:
+        return "Document analysis could not extract meaningful text content.\n\nRECOMMENDATIONS: Please ensure the document is properly scanned and try again."
+    
+    words = full_text.split()
+    word_count = len(words)
+    
+    if word_count <= 200:
+        return f"""SUMMARY: This legal document contains {word_count} words covering various contractual terms and conditions. {full_text}
+
+RECOMMENDATIONS: 
+1. Review all terms and conditions carefully
+2. Check for any liability or indemnification clauses
+3. Verify payment terms and deadlines
+4. Consider consulting with a qualified Indian lawyer for specific legal advice
+5. Ensure all parties understand their rights and obligations"""
+    
+    # Create a more intelligent summary
+    summary_words = words[:200]
+    summary = " ".join(summary_words)
+    
+    return f"""SUMMARY: This legal document contains {word_count} words covering various contractual terms and conditions. The document appears to establish rights, obligations, and procedures for the parties involved. Key areas typically include liability, termination, payment terms, and governing law. {summary}...
+
+RECOMMENDATIONS: 
+1. Review all liability and indemnification clauses carefully
+2. Check payment terms and deadlines
+3. Understand termination conditions and notice requirements
+4. Verify governing law and jurisdiction clauses
+5. Consider consulting with a qualified Indian lawyer for specific legal advice
+6. Ensure all parties understand their rights and obligations
+7. Look for any unusual or one-sided terms that may need negotiation"""
 
 def create_fallback_clauses(ocr_text) -> List[Clause]:
     """
@@ -551,5 +621,5 @@ async def get_capabilities():
         "risk_levels": [level.value for level in RiskLevel],
         "max_blocks": getattr(settings, 'MAX_CLAUSE_BLOCKS', 100),
         "timeout_seconds": 300,
-        "max_summary_words": 300
+        "max_summary_words": 500
     }

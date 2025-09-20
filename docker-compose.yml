@@ -44,6 +44,11 @@ services:
       - VERTEX_SEARCH_ENGINE_ID=legal-document-search_1757848376569
       - VERTEX_SEARCH_PROJECT_ID=legal-470717
       
+      # ── Enhanced RAG Configuration ─────────────────────
+      - GEMINI_API_KEY=${GOOGLE_API_KEY}
+      - VERTEX_SEARCH_AVAILABLE=true
+      - ASYNC_HTTP_AVAILABLE=true
+      
       # ── Milvus Vector Database ─────────────────────────
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530

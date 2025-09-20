@@ -491,6 +491,26 @@
 
 .recent-actions {
     flex-shrink: 0;
+    display: flex;
+    gap: var(--spacing-2);
+    align-items: center;
+}
+
+.recent-actions .btn-danger {
+    background: #ef4444;
+    color: white;
+    border: 1px solid #ef4444;
+    padding: var(--spacing-2) var(--spacing-3);
+    border-radius: 6px;
+    font-size: var(--font-size-sm);
+    transition: all 0.2s ease;
+}
+
+.recent-actions .btn-danger:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
 
 /* Responsive Design */
