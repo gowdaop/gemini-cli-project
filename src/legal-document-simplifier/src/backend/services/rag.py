@@ -643,11 +643,13 @@ class EnhancedRAGService:
         logger.info("Enhanced RAG service initialization complete")
     
     async def retrieve_contexts(self, query: str, top_k: int = 8, use_web_fallback: bool = True) -> List[RAGContextItem]:
-        """Retrieve relevant contexts from Milvus with web search fallback"""
+        """Retrieve relevant contexts with strict fallback control"""
         if not self.initialized:
             await self.initialize()
         
         logger.info(f"🔍 Retrieving contexts for query: '{query[:50]}...'")
+        
+        
         
         try:
             # Step 1: Try Milvus RAG search first
@@ -657,7 +659,7 @@ class EnhancedRAGService:
             context_quality = self._evaluate_context_quality(rag_contexts, query)
             logger.info(f"📊 RAG context quality score: {context_quality:.2f}")
             
-            # Step 3: Use web search fallback if RAG quality is poor
+            # Step 3: Use web search fallback ONLY if explicitly enabled
             if context_quality < 0.5 and use_web_fallback:
                 logger.info("🌐 RAG quality insufficient, using web search fallback")
                 web_contexts = await self._get_web_contexts(query, min(top_k, 5))
@@ -670,6 +672,8 @@ class EnhancedRAGService:
                 final_contexts = combined_contexts[:top_k]
                 logger.info(f"✅ Combined {len(rag_contexts)} RAG + {len(web_contexts)} web contexts")
                 return final_contexts
+            elif not use_web_fallback:
+                logger.info("🚫 Web fallback disabled, using RAG contexts only")
             
             logger.info(f"✅ Using {len(rag_contexts)} RAG contexts (quality sufficient)")
             return rag_contexts[:top_k]
@@ -727,24 +731,26 @@ class EnhancedRAGService:
             return []
     
     async def _get_web_contexts(self, query: str, num_results: int) -> List[RAGContextItem]:
-        """Get contexts from web search with GCP and free fallback"""
+        """Get contexts from web search with Vertex AI and free fallback"""
         try:
             # Enhance query for legal search
             legal_query = self._enhance_query_for_legal_search(query)
             
             web_contexts = []
+            vertex_used = False
             
-            # Try GCP Vertex AI Search first
+            # Try Vertex AI Search first
             try:
-                gcp_results = await self.web_search_service.search_web(legal_query, num_results)
-                if gcp_results:
-                    gcp_contexts = self.web_search_service.convert_to_rag_context(gcp_results)
-                    web_contexts.extend(gcp_contexts)
-                    logger.info(f"🌐 GCP web search returned {len(gcp_contexts)} contexts")
+                vertex_results = await self.web_search_service.search_web(legal_query, num_results)
+                if vertex_results:
+                    vertex_contexts = self.web_search_service.convert_to_rag_context(vertex_results)
+                    web_contexts.extend(vertex_contexts)
+                    vertex_used = True
+                    logger.info(f"🌐 Vertex AI search returned {len(vertex_contexts)} contexts")
             except Exception as e:
-                logger.warning(f"GCP web search failed: {e}")
+                logger.warning(f"Vertex AI search failed: {e}")
             
-            # If GCP search didn't return enough results, try free web search
+            # If Vertex search didn't return enough results, try free web search
             if len(web_contexts) < num_results // 2:
                 try:
                     free_results = await self.free_web_search_service.search_web(legal_query, num_results - len(web_contexts))
@@ -755,6 +761,8 @@ class EnhancedRAGService:
                 except Exception as e:
                     logger.warning(f"Free web search failed: {e}")
             
+            # Log which path was taken
+            logger.info(f"vertex_used={vertex_used}")
             logger.info(f"🌐 Total web search returned {len(web_contexts)} contexts")
             return web_contexts
             

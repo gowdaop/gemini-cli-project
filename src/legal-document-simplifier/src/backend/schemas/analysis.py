@@ -59,7 +59,7 @@ class RiskScore(BaseModel):
     score: float = Field(..., ge=0.0, le=1.0, description="Numerical risk score")
     rationale: str = Field(..., description="Explanation of the risk assessment")
     supporting_context: List[RAGContextItem] = Field(default_factory=list, description="Evidence from legal database")
-    recommendations: List[str] = []
+
 
 # Request/Response Models
 class AnalyzeRequest(BaseModel):
@@ -83,6 +83,8 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="Conversation identifier")
     ocr: Optional[OCRText] = Field(None, description="Document context")
     summary_hint: Optional[str] = Field(None, description="Additional context hint")
+    selected_clause_id: Optional[str] = None
+    selected_risk_level: Optional[str] = None  # "red", "orange", "yellow", "white"
 
 class ChatResponse(BaseModel):
     """Response from document Q&A"""
