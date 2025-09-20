@@ -34,7 +34,7 @@ services:
       - DOCAI_PROCESSOR_VERSION=rc
       
       # ── Vertex AI Configuration ────────────────────────
-      - GOOGLE_API_KEY=AIzaSyCNcVO2wXaB3agTZlXyNX30JrO5PUqljLQ
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - VERTEX_MODEL=gemini-2.0-flash
       - VERTEX_LOCATION=us
       - VERTEX_MAX_TOKENS=8192
