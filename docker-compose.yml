@@ -16,7 +16,7 @@ services:
       - DEBUG=true
       
       # ── Authentication & Security ──────────────────────
-      - API_KEY=legal-doc-analyzer-2025-secure-key-f47d4a2c
+      - API_KEY=legal-
       
       # ── CORS Configuration ─────────────────────────────
       - CORS_ORIGINS=http://localhost:3000,https://localhost:3000
